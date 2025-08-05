@@ -1,27 +1,36 @@
-import { createServerClient } from "@supabase/ssr"
+import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { cookies } from "next/headers"
 
-export function supabaseServer() {
+export function createClient() {
   const cookieStore = cookies()
 
-  const FALLBACK_SUPABASE_URL = "https://wwasrxffcmoewpfsumix.supabase.co"
-  const FALLBACK_SUPABASE_SERVICE_ROLE_KEY =
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind3YXNyeGZmY21vZXdwZnN1bWl4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MjA2OTk2NDMxMn0.hspflaQoZlL8yb-O1XebeeOBkan2vSTpVUvYzsPtD3I"
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || FALLBACK_SUPABASE_URL
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || FALLBACK_SUPABASE_SERVICE_ROLE_KEY
-
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    throw new Error(
-      "Missing Supabase server environment variables. Please ensure NEXT_PUBLIC_SUPABASE_URL (or SUPABASE_URL) and SUPABASE_SERVICE_ROLE_KEY are set in your Vercel project.",
-    )
-  }
-
-  return createServerClient(supabaseUrl, supabaseServiceRoleKey, {
-    cookies: {
-      get(name: string) {
-        return cookieStore.get(name)?.value
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || "YOUR_SUPABASE_URL", // Fallback for Vercel preview
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "YOUR_SUPABASE_ANON_KEY", // Fallback for Vercel preview
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value
+        },
+        set(name: string, value: string, options: CookieOptions) {
+          try {
+            cookieStore.set({ name, value, ...options })
+          } catch (error) {
+            // The `set` method was called from a Server Component.
+            // This can be ignored if you have enabled the Next.js Middleware.
+            console.warn("Supabase cookie set error:", error)
+          }
+        },
+        remove(name: string, options: CookieOptions) {
+          try {
+            cookieStore.set({ name, value: "", ...options })
+          } catch (error) {
+            // The `delete` method was called from a Server Component.
+            // This can be ignored if you have enabled the Next.js Middleware.
+            console.warn("Supabase cookie remove error:", error)
+          }
+        },
       },
     },
-  })
+  )
 }
