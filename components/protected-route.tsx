@@ -2,57 +2,37 @@
 
 import type React from "react"
 
-import { useAuth } from "./auth-context-fixed"
+import { useAuth } from "./auth-context-fixed" // Use the fixed auth context
 import { useRouter } from "next/navigation"
 import { useEffect } from "react"
-import { Loader2 } from "lucide-react"
 
 interface ProtectedRouteProps {
   children: React.ReactNode
-  requiredRole?: "admin" | "cashier"
+  allowedRoles: string[]
 }
 
-export default function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
+export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
   const { user, isLoading } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
     if (!isLoading) {
       if (!user) {
+        // Not logged in, redirect to login
         router.push("/login")
-        return
-      }
-
-      if (requiredRole && user.role !== requiredRole) {
-        // Redirect non-admin users trying to access admin routes
+      } else if (!allowedRoles.includes(user.role)) {
+        // Logged in but unauthorized role, redirect to home or an access denied page
+        alert("You do not have permission to view this page.")
         router.push("/")
-        return
       }
     }
-  }, [user, isLoading, requiredRole, router])
+  }, [user, isLoading, allowedRoles, router])
 
-  if (isLoading) {
+  if (isLoading || !user || !allowedRoles.includes(user.role)) {
+    // Optionally render a loading spinner or a message
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (!user) {
-    return null // Will redirect to login
-  }
-
-  if (requiredRole && user.role !== requiredRole) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h1>
-          <p className="text-gray-600">You don't have permission to access this page.</p>
-        </div>
+      <div className="flex min-h-screen items-center justify-center">
+        <p className="text-gray-500">Loading or redirecting...</p>
       </div>
     )
   }
