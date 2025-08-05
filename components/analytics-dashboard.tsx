@@ -8,10 +8,8 @@ import { useAuth } from "./auth-context-fixed"
 import { getAdminDashboardData, markAgentCommissionPaid } from "@/actions/admin" // Import server actions
 import { Button } from "@/components/ui/button"
 import { createClient } from "@supabase/supabase-js"
+import { supabase } from "@/lib/supabase" // Client-side Supabase client
 
-const supabaseUrl = "https://your-supabase-url.supabase.co"
-const supabaseKey = "your-supabase-key"
-const supabase = createClient(supabaseUrl, supabaseKey)
 
 // Data structures for receipts (must match what's saved in Supabase)
 interface ReceiptData {
@@ -252,6 +250,7 @@ export default function AnalyticsDashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold text-gray-900">
+
                       ₱
                       {totalAgentCommission.toLocaleString(undefined, {
                         maximumFractionDigits: 2,
@@ -268,6 +267,7 @@ export default function AnalyticsDashboard() {
                     <Percent className="h-4 w-4 text-gray-500" />
                   </CardHeader>
                   <CardContent>
+
                     <div className="text-2xl font-bold text-gray-900">₱{totalAgentTips.toLocaleString()}</div>
                     <p className="text-xs text-gray-500">All-time tips</p>
                   </CardContent>

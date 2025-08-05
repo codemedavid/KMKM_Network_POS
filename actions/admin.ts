@@ -15,12 +15,13 @@ interface ReceiptData {
   receiver_number?: string // Changed from receiverNumber
   transaction_type: "receive" | "send" // Changed from transactionType
   status: "pending" | "completed" | "failed"
-  is_valid_account: boolean // Changed from isValidAccount
-  agent_commission?: number // Changed from agentCommission
-  saved_at: string // Changed from savedAt
-  agent_id?: string // Changed from agentId
-  notes?: string // Added notes
-  is_commission_paid?: boolean // Corrected column name
+  is_valid_account: boolean
+  agent_commission?: number
+  saved_at: string
+  agent_id?: string
+  notes?: string
+  image_url?: string
+  commission_paid?: boolean
 }
 
 // ProfileData interface
@@ -89,4 +90,5 @@ export async function getAdminDashboardData(): Promise<{
 
 export async function markAgentCommissionPaid(agentId: string): Promise<{ error: string | null }> {
   return await createPayoutForAgent(agentId)
+
 }
