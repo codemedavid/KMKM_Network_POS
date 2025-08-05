@@ -3,7 +3,7 @@ import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
-import { AuthProvider } from "@/components/auth-context-fixed" // Use the fixed auth context
+import AuthProvider from "@/components/auth-context-fixed" // Use the fixed auth context
 
 const inter = Inter({ subsets: ["latin"] })
 
