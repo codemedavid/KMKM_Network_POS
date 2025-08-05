@@ -1,6 +1,7 @@
 "use server"
 
 import { supabaseServer } from "@/lib/supabase-server"
+import { createPayoutForAgent } from "./payouts"
 
 // ReceiptData interface
 interface ReceiptData {
@@ -87,21 +88,5 @@ export async function getAdminDashboardData(): Promise<{
 }
 
 export async function markAgentCommissionPaid(agentId: string): Promise<{ error: string | null }> {
-  try {
-    const { error } = await supabaseServer
-      .from("receipts")
-      .update({ is_commission_paid: true }) // Corrected column name
-      .eq("agent_id", agentId)
-      .eq("is_commission_paid", false) // Corrected column name
-
-    if (error) {
-      console.error("Server Action: Error marking commission as paid:", error.message)
-      return { error: error.message }
-    }
-
-    return { error: null }
-  } catch (e: any) {
-    console.error("Server Action: Unexpected error in markAgentCommissionPaid:", e.message)
-    return { error: "An unexpected server error occurred." }
-  }
+  return await createPayoutForAgent(agentId)
 }
