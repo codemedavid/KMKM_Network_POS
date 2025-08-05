@@ -1,18 +1,19 @@
 "use server"
 
 import { supabaseServer } from "@/lib/supabase-server"
+import { createPayoutForAgent } from "./payouts"
 
 // ReceiptData interface
 interface ReceiptData {
   id: string
   amount: number
-  reference_number: string
-  date_time: string
-  sender_name?: string
-  customer_tip?: number
-  receiver_name?: string
-  receiver_number?: string
-  transaction_type: "receive" | "send"
+  reference_number: string // Changed from referenceNumber
+  date_time: string // Changed from dateTime
+  sender_name?: string // Changed from senderName
+  customer_tip?: number // Changed from customerTip
+  receiver_name?: string // Changed from receiverName
+  receiver_number?: string // Changed from receiverNumber
+  transaction_type: "receive" | "send" // Changed from transactionType
   status: "pending" | "completed" | "failed"
   is_valid_account: boolean
   agent_commission?: number
@@ -38,41 +39,39 @@ export async function getAdminDashboardData(): Promise<{
 }> {
   try {
     // 1. Fetch all receipts
-    const { data: receiptsData, error: receiptsError } = await supabaseServer
-      .from("receipts")
-      .select(
-        "id, agent_id, agent_commission, amount, customer_tip, saved_at, reference_number, date_time, sender_name, receiver_name, receiver_number, transaction_type, status, is_valid_account, notes, image_url, commission_paid",
-      )
+    const { data: receiptsData, error: receiptsError } = await supabaseServer.from("receipts").select(
+      "id, agent_id, agent_commission, amount, customer_tip, saved_at, reference_number, date_time, sender_name, receiver_name, receiver_number, transaction_type, status, is_valid_account, notes, image_url, is_commission_paid", // Corrected column name
+    )
 
     if (receiptsError) {
-      console.error("Server Action: Error fetching receipts:", receiptsError.message);
-      return { receipts: null, profiles: null, error: "Failed to fetch receipts." };
+      console.error("Server Action: Error fetching receipts:", receiptsError.message)
+      return { receipts: null, profiles: null, error: "Failed to fetch receipts." }
     }
 
     // 2. Fetch all profiles
     const { data: profilesData, error: profilesError } = await supabaseServer
       .from("profiles")
-      .select("user_id, full_name, role");
+      .select("user_id, full_name, role")
 
     if (profilesError) {
-      console.error("Server Action: Error fetching profiles:", profilesError.message);
-      return { receipts: null, profiles: null, error: "Failed to fetch profiles." };
+      console.error("Server Action: Error fetching profiles:", profilesError.message)
+      return { receipts: null, profiles: null, error: "Failed to fetch profiles." }
     }
 
     // 3. Fetch all users via admin API (the correct way!)
-    const { data: usersResult, error: usersError } = await supabaseServer.auth.admin.listUsers();
+    const { data: usersResult, error: usersError } = await supabaseServer.auth.admin.listUsers()
     if (usersError) {
-      console.error("Server Action: Error fetching auth.users emails:", usersError.message);
+      console.error("Server Action: Error fetching auth.users emails:", usersError.message)
       // Proceed without emails
     }
 
     // 4. Map user id to email
-    const authUserEmailsMap = new Map<string, string>();
+    const authUserEmailsMap = new Map<string, string>()
     usersResult?.users.forEach((user) => {
       if (user.id && user.email) {
-        authUserEmailsMap.set(user.id, user.email);
+        authUserEmailsMap.set(user.id, user.email)
       }
-    });
+    })
 
     // 5. Map profiles to include emails
     const mappedProfiles: ProfileData[] = profilesData.map((p) => ({
@@ -80,31 +79,16 @@ export async function getAdminDashboardData(): Promise<{
       full_name: p.full_name,
       role: p.role,
       email: authUserEmailsMap.get(p.user_id),
-    }));
+    }))
 
-    return { receipts: receiptsData, profiles: mappedProfiles, error: null };
+    return { receipts: receiptsData, profiles: mappedProfiles, error: null }
   } catch (e: any) {
-    console.error("Server Action: Unexpected error in getAdminDashboardData:", e.message);
-    return { receipts: null, profiles: null, error: "An unexpected server error occurred." };
+    console.error("Server Action: Unexpected error in getAdminDashboardData:", e.message)
+    return { receipts: null, profiles: null, error: "An unexpected server error occurred." }
   }
 }
 
 export async function markAgentCommissionPaid(agentId: string): Promise<{ error: string | null }> {
-  try {
-    const { error } = await supabaseServer
-      .from("receipts")
-      .update({ commission_paid: true })
-      .eq("agent_id", agentId)
-      .eq("commission_paid", false)
+  return await createPayoutForAgent(agentId)
 
-    if (error) {
-      console.error("Server Action: Error marking commission as paid:", error.message)
-      return { error: error.message }
-    }
-
-    return { error: null }
-  } catch (e: any) {
-    console.error("Server Action: Unexpected error in markAgentCommissionPaid:", e.message)
-    return { error: "An unexpected server error occurred." }
-  }
 }

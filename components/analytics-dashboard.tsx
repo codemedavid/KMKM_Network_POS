@@ -2,32 +2,34 @@
 import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { DollarSign, TrendingUp, Percent, Users } from "lucide-react"
-import ModernNav from "./modern-nav"
-import { useAuth } from "./auth-context-fixed"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { supabase } from "@/lib/supabase" // Client-side Supabase client
+import { useAuth } from "./auth-context-fixed"
 import { getAdminDashboardData, markAgentCommissionPaid } from "@/actions/admin" // Import server actions
 import { Button } from "@/components/ui/button"
+import { createClient } from "@supabase/supabase-js"
+import { supabase } from "@/lib/supabase" // Client-side Supabase client
+
 
 // Data structures for receipts (must match what's saved in Supabase)
 interface ReceiptData {
   id: string
   amount: number
-  reference_number: string // Changed from referenceNumber
-  date_time: string // Changed from dateTime
-  sender_name?: string // Changed from senderName
-  customer_tip?: number // Changed from customerTip
-  receiver_name?: string // Changed from receiverName
-  receiver_number?: string // Changed from receiverNumber
-  transaction_type: "receive" | "send" // Changed from transactionType
+  reference_number: string
+  date_time: string
+  sender_name?: string
+  customer_tip?: number
+  receiver_name?: string
+  receiver_number?: string
+  transaction_type: "receive" | "send"
   status: "pending" | "completed" | "failed"
-  is_valid_account: boolean // Changed from isValidAccount
-  agent_commission?: number // Changed from agentCommission
-  saved_at: string // Changed from savedAt
-  agent_id?: string // Changed from agentId
-  notes?: string // Added notes
-  commission_paid?: boolean
+  is_valid_account: boolean
+  agent_commission?: number
+  saved_at: string
+  agent_id?: string
+  notes?: string
+  image_url?: string
+  is_commission_paid?: boolean // Corrected column name
 }
 
 // Data structure for profiles (as returned by the server action)
@@ -47,6 +49,7 @@ export default function AnalyticsDashboard() {
   const [allProfiles, setAllProfiles] = useState<ProfileData[]>([]) // Store all profiles for admin calculations
   const [currentAgentCommission, setCurrentAgentCommission] = useState(0)
   const [totalAgentCommission, setTotalAgentCommission] = useState(0)
+  const [totalAgentTips, setTotalAgentTips] = useState(0) // New state for total agent tips
 
   const fetchAnalyticsData = useCallback(async () => {
     if (userLoading) return
@@ -68,35 +71,28 @@ export default function AnalyticsDashboard() {
 
       const earningsMap = new Map<string, number>()
       receipts?.forEach((receipt) => {
-        if (receipt.agent_id && receipt.agent_commission && !receipt.commission_paid) {
-          earningsMap.set(
-            receipt.agent_id,
-            (earningsMap.get(receipt.agent_id) || 0) + receipt.agent_commission,
-          )
+        if (receipt.agent_id && receipt.agent_commission && !receipt.is_commission_paid) {
+          // Corrected column name
+          earningsMap.set(receipt.agent_id, (earningsMap.get(receipt.agent_id) || 0) + receipt.agent_commission)
         }
       })
 
       const agentNamesMap = new Map<string, string>()
       profiles?.forEach((profile) => {
-        agentNamesMap.set(
-          profile.id,
-          profile.full_name || profile.email || `Agent ${profile.id.substring(0, 4)}`,
-        )
+        agentNamesMap.set(profile.id, profile.full_name || profile.email || `Agent ${profile.id.substring(0, 4)}`)
       })
 
-      const calculatedEarnings = Array.from(earningsMap.entries()).map(
-        ([agentId, totalCommission]) => ({
-          id: agentId,
-          name:
-            agentNamesMap.get(agentId) || `Unknown Agent (${agentId.substring(0, 4)})`,
-          totalCommission,
-        }),
-      )
+      const calculatedEarnings = Array.from(earningsMap.entries()).map(([agentId, totalCommission]) => ({
+        id: agentId,
+        name: agentNamesMap.get(agentId) || `Unknown Agent (${agentId.substring(0, 4)})`,
+        totalCommission,
+      }))
       setAgentEarnings(calculatedEarnings)
     } else if (user?.role === "cashier") {
+      // For cashier, fetch only their own receipts
       const { data: receiptsData, error: receiptsError } = await supabase
         .from("receipts")
-        .select("agent_id, agent_commission, amount, customer_tip, saved_at, commission_paid")
+        .select("agent_id, agent_commission, amount, customer_tip, saved_at, is_commission_paid") // Corrected column name
         .eq("agent_id", user.id)
 
       if (receiptsError) {
@@ -106,18 +102,19 @@ export default function AnalyticsDashboard() {
       }
 
       setAllReceipts(receiptsData || [])
-      setAllProfiles([])
+      setAllProfiles([]) // Cashiers don't need all profiles
 
-      const totalCommission =
-        receiptsData?.reduce((sum, receipt) => sum + (receipt.agent_commission || 0), 0) || 0
+      const totalCommission = receiptsData?.reduce((sum, receipt) => sum + (receipt.agent_commission || 0), 0) || 0
       const currentCommission =
         receiptsData?.reduce(
-          (sum, receipt) =>
-            sum + (receipt.commission_paid ? 0 : receipt.agent_commission || 0),
+          (sum, receipt) => sum + (receipt.is_commission_paid ? 0 : receipt.agent_commission || 0), // Corrected column name
           0,
         ) || 0
+      const totalTips = receiptsData?.reduce((sum, receipt) => sum + (receipt.customer_tip || 0), 0) || 0
+
       setTotalAgentCommission(totalCommission)
       setCurrentAgentCommission(currentCommission)
+      setTotalAgentTips(totalTips) // Set total tips for cashier
     } else {
       setError("Please log in to view analytics.")
     }
@@ -129,8 +126,22 @@ export default function AnalyticsDashboard() {
   }, [fetchAnalyticsData])
 
   const handleMarkPaid = async (agentId: string) => {
-    await markAgentCommissionPaid(agentId)
-    fetchAnalyticsData()
+    if (
+      !confirm(
+        "Are you sure you want to mark all unpaid commissions for this agent as paid? This action cannot be undone.",
+      )
+    ) {
+      return
+    }
+    setLoading(true)
+    const { error } = await markAgentCommissionPaid(agentId)
+    if (error) {
+      alert(`Failed to mark commissions as paid: ${error}`)
+    } else {
+      alert("Commissions marked as paid successfully!")
+      fetchAnalyticsData() // Re-fetch data to update the dashboard
+    }
+    setLoading(false)
   }
 
   // Mock data for other analytics metrics (can be replaced with real data later)
@@ -145,8 +156,6 @@ export default function AnalyticsDashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100">
-      <ModernNav />
-
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 md:pb-8">
         <div className="text-center mb-8">
           <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent mb-3">
@@ -224,7 +233,11 @@ export default function AnalyticsDashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold text-gray-900">
-                      ₱{currentAgentCommission.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })}
+                      ₱
+                      {currentAgentCommission.toLocaleString(undefined, {
+                        maximumFractionDigits: 2,
+                        minimumFractionDigits: 2,
+                      })}
                     </div>
                     <p className="text-xs text-gray-500">Unpaid commissions</p>
                   </CardContent>
@@ -237,7 +250,12 @@ export default function AnalyticsDashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold text-gray-900">
-                      ₱{totalAgentCommission.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })}
+
+                      ₱
+                      {totalAgentCommission.toLocaleString(undefined, {
+                        maximumFractionDigits: 2,
+                        minimumFractionDigits: 2,
+                      })}
                     </div>
                     <p className="text-xs text-gray-500">All-time commissions</p>
                   </CardContent>
@@ -249,7 +267,8 @@ export default function AnalyticsDashboard() {
                     <Percent className="h-4 w-4 text-gray-500" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-gray-900">₱{totalTips.toLocaleString()}</div>
+
+                    <div className="text-2xl font-bold text-gray-900">₱{totalAgentTips.toLocaleString()}</div>
                     <p className="text-xs text-gray-500">All-time tips</p>
                   </CardContent>
                 </Card>
@@ -290,11 +309,7 @@ export default function AnalyticsDashboard() {
                                 })}
                               </TableCell>
                               <TableCell className="text-right">
-                                <Button
-                                  size="sm"
-                                  variant="secondary"
-                                  onClick={() => handleMarkPaid(agent.id)}
-                                >
+                                <Button size="sm" variant="secondary" onClick={() => handleMarkPaid(agent.id)}>
                                   Mark as Paid
                                 </Button>
                               </TableCell>
