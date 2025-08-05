@@ -20,6 +20,7 @@ interface ReceiptData {
   agent_id?: string
   notes?: string
   image_url?: string
+  commission_paid?: boolean
 }
 
 // ProfileData interface
@@ -39,7 +40,9 @@ export async function getAdminDashboardData(): Promise<{
     // 1. Fetch all receipts
     const { data: receiptsData, error: receiptsError } = await supabaseServer
       .from("receipts")
-      .select("id, agent_id, agent_commission, amount, customer_tip, saved_at, reference_number, date_time, sender_name, receiver_name, receiver_number, transaction_type, status, is_valid_account, notes, image_url");
+      .select(
+        "id, agent_id, agent_commission, amount, customer_tip, saved_at, reference_number, date_time, sender_name, receiver_name, receiver_number, transaction_type, status, is_valid_account, notes, image_url, commission_paid",
+      )
 
     if (receiptsError) {
       console.error("Server Action: Error fetching receipts:", receiptsError.message);
@@ -83,5 +86,25 @@ export async function getAdminDashboardData(): Promise<{
   } catch (e: any) {
     console.error("Server Action: Unexpected error in getAdminDashboardData:", e.message);
     return { receipts: null, profiles: null, error: "An unexpected server error occurred." };
+  }
+}
+
+export async function markAgentCommissionPaid(agentId: string): Promise<{ error: string | null }> {
+  try {
+    const { error } = await supabaseServer
+      .from("receipts")
+      .update({ commission_paid: true })
+      .eq("agent_id", agentId)
+      .eq("commission_paid", false)
+
+    if (error) {
+      console.error("Server Action: Error marking commission as paid:", error.message)
+      return { error: error.message }
+    }
+
+    return { error: null }
+  } catch (e: any) {
+    console.error("Server Action: Unexpected error in markAgentCommissionPaid:", e.message)
+    return { error: "An unexpected server error occurred." }
   }
 }

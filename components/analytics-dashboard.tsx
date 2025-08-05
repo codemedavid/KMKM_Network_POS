@@ -1,5 +1,5 @@
 "use client"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { DollarSign, TrendingUp, Percent, Users } from "lucide-react"
 import ModernNav from "./modern-nav"
@@ -7,7 +7,8 @@ import { useAuth } from "./auth-context-fixed"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { supabase } from "@/lib/supabase" // Client-side Supabase client
-import { getAdminDashboardData } from "@/actions/admin" // Import the new Server Action
+import { getAdminDashboardData, markAgentCommissionPaid } from "@/actions/admin" // Import server actions
+import { Button } from "@/components/ui/button"
 
 // Data structures for receipts (must match what's saved in Supabase)
 interface ReceiptData {
@@ -26,6 +27,7 @@ interface ReceiptData {
   saved_at: string // Changed from savedAt
   agent_id?: string // Changed from agentId
   notes?: string // Added notes
+  commission_paid?: boolean
 }
 
 // Data structure for profiles (as returned by the server action)
@@ -43,89 +45,103 @@ export default function AnalyticsDashboard() {
   const [error, setError] = useState<string | null>(null)
   const [allReceipts, setAllReceipts] = useState<ReceiptData[]>([]) // Store all receipts for admin calculations
   const [allProfiles, setAllProfiles] = useState<ProfileData[]>([]) // Store all profiles for admin calculations
+  const [currentAgentCommission, setCurrentAgentCommission] = useState(0)
+  const [totalAgentCommission, setTotalAgentCommission] = useState(0)
+
+  const fetchAnalyticsData = useCallback(async () => {
+    if (userLoading) return
+
+    setLoading(true)
+    setError(null)
+
+    if (user?.role === "admin") {
+      const { receipts, profiles, error: adminError } = await getAdminDashboardData()
+
+      if (adminError) {
+        setError("Failed to load admin analytics data: " + adminError)
+        setLoading(false)
+        return
+      }
+
+      setAllReceipts(receipts || [])
+      setAllProfiles(profiles || [])
+
+      const earningsMap = new Map<string, number>()
+      receipts?.forEach((receipt) => {
+        if (receipt.agent_id && receipt.agent_commission && !receipt.commission_paid) {
+          earningsMap.set(
+            receipt.agent_id,
+            (earningsMap.get(receipt.agent_id) || 0) + receipt.agent_commission,
+          )
+        }
+      })
+
+      const agentNamesMap = new Map<string, string>()
+      profiles?.forEach((profile) => {
+        agentNamesMap.set(
+          profile.id,
+          profile.full_name || profile.email || `Agent ${profile.id.substring(0, 4)}`,
+        )
+      })
+
+      const calculatedEarnings = Array.from(earningsMap.entries()).map(
+        ([agentId, totalCommission]) => ({
+          id: agentId,
+          name:
+            agentNamesMap.get(agentId) || `Unknown Agent (${agentId.substring(0, 4)})`,
+          totalCommission,
+        }),
+      )
+      setAgentEarnings(calculatedEarnings)
+    } else if (user?.role === "cashier") {
+      const { data: receiptsData, error: receiptsError } = await supabase
+        .from("receipts")
+        .select("agent_id, agent_commission, amount, customer_tip, saved_at, commission_paid")
+        .eq("agent_id", user.id)
+
+      if (receiptsError) {
+        setError("Failed to load cashier analytics data: " + receiptsError.message)
+        setLoading(false)
+        return
+      }
+
+      setAllReceipts(receiptsData || [])
+      setAllProfiles([])
+
+      const totalCommission =
+        receiptsData?.reduce((sum, receipt) => sum + (receipt.agent_commission || 0), 0) || 0
+      const currentCommission =
+        receiptsData?.reduce(
+          (sum, receipt) =>
+            sum + (receipt.commission_paid ? 0 : receipt.agent_commission || 0),
+          0,
+        ) || 0
+      setTotalAgentCommission(totalCommission)
+      setCurrentAgentCommission(currentCommission)
+    } else {
+      setError("Please log in to view analytics.")
+    }
+    setLoading(false)
+  }, [user, userLoading])
 
   useEffect(() => {
-    const fetchAnalyticsData = async () => {
-      if (userLoading) return // Wait for user to load
-
-      setLoading(true)
-      setError(null)
-
-      if (user?.role === "admin") {
-        // Admin: Fetch all data using the Server Action
-        const { receipts, profiles, error: adminError } = await getAdminDashboardData()
-
-        if (adminError) {
-          setError("Failed to load admin analytics data: " + adminError)
-          setLoading(false)
-          return
-        }
-
-        setAllReceipts(receipts || [])
-        setAllProfiles(profiles || [])
-
-        const earningsMap = new Map<string, number>()
-        receipts?.forEach((receipt) => {
-          if (receipt.agent_id && receipt.agent_commission) {
-            earningsMap.set(receipt.agent_id, (earningsMap.get(receipt.agent_id) || 0) + receipt.agent_commission)
-          }
-        })
-
-        const agentNamesMap = new Map<string, string>()
-        profiles?.forEach((profile) => {
-          // Prioritize full_name from profiles, then email from auth.users, then generic fallback
-          agentNamesMap.set(profile.id, profile.full_name || profile.email || `Agent ${profile.id.substring(0, 4)}`)
-        })
-
-        const calculatedEarnings = Array.from(earningsMap.entries()).map(([agentId, totalCommission]) => {
-          return {
-            id: agentId,
-            name: agentNamesMap.get(agentId) || `Unknown Agent (${agentId.substring(0, 4)})`, // Fallback for safety
-            totalCommission: totalCommission,
-          }
-        })
-        setAgentEarnings(calculatedEarnings)
-      } else if (user?.role === "cashier") {
-        // Cashier: Fetch only their own receipts (RLS handles this)
-        const { data: receiptsData, error: receiptsError } = await supabase
-          .from("receipts")
-          .select("agent_id, agent_commission, amount, customer_tip, saved_at")
-          .eq("agent_id", user.id) // Ensure cashier only fetches their own
-
-        if (receiptsError) {
-          setError("Failed to load cashier analytics data: " + receiptsError.message)
-          setLoading(false)
-          return
-        }
-
-        setAllReceipts(receiptsData || []) // Only cashier's receipts
-        setAllProfiles([]) // Cashiers don't need all profiles
-
-        const totalCommission = receiptsData?.reduce((sum, receipt) => sum + (receipt.agent_commission || 0), 0) || 0
-        setAgentEarnings([{ id: user.id, name: user.name, totalCommission }])
-      } else {
-        // Not logged in or role not recognized
-        setError("Please log in to view analytics.")
-      }
-      setLoading(false)
-    }
-
     fetchAnalyticsData()
-  }, [user, userLoading]) // Re-fetch when user or userLoading changes
+  }, [fetchAnalyticsData])
+
+  const handleMarkPaid = async (agentId: string) => {
+    await markAgentCommissionPaid(agentId)
+    fetchAnalyticsData()
+  }
 
   // Mock data for other analytics metrics (can be replaced with real data later)
   // These calculations now use 'allReceipts' for admins, or the single agent's data for cashiers
   const totalSales = allReceipts.reduce((sum, r) => sum + (r.amount || 0), 0)
   const totalTips = allReceipts.reduce((sum, r) => sum + (r.customer_tip || 0), 0)
-  const totalCommissionEarned = agentEarnings.reduce((sum, agent) => sum + agent.totalCommission, 0)
+  const totalCommissionEarned = allReceipts.reduce((sum, r) => sum + (r.agent_commission || 0), 0)
   const transactionsToday = allReceipts.filter(
     (r) => new Date(r.saved_at).toDateString() === new Date().toDateString(),
   ).length
   const averageTransaction = transactionsToday > 0 ? totalSales / transactionsToday : 0
-  const topAgent =
-    agentEarnings.length > 0
-      ? agentEarnings.reduce((prev, current) => (prev.totalCommission > current.totalCommission ? prev : current)).name
-      : "N/A"
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100">
@@ -153,54 +169,95 @@ export default function AnalyticsDashboard() {
           <div className="text-center py-8 text-red-500">{error}</div>
         ) : (
           <>
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
-              <Card className="bg-white/70 backdrop-blur-sm border border-gray-200/50 shadow-xl shadow-gray-200/20">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-gray-700">Total Sales</CardTitle>
-                  <DollarSign className="h-4 w-4 text-gray-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-gray-900">₱{totalSales.toLocaleString()}</div>
-                  <p className="text-xs text-gray-500">+20.1% from last month</p>
-                </CardContent>
-              </Card>
+            {user?.role === "admin" ? (
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
+                <Card className="bg-white/70 backdrop-blur-sm border border-gray-200/50 shadow-xl shadow-gray-200/20">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-700">Total Sales</CardTitle>
+                    <DollarSign className="h-4 w-4 text-gray-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-gray-900">₱{totalSales.toLocaleString()}</div>
+                    <p className="text-xs text-gray-500">+20.1% from last month</p>
+                  </CardContent>
+                </Card>
 
-              <Card className="bg-white/70 backdrop-blur-sm border border-gray-200/50 shadow-xl shadow-gray-200/20">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-gray-700">Total Tips</CardTitle>
-                  <Percent className="h-4 w-4 text-gray-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-gray-900">₱{totalTips.toLocaleString()}</div>
-                  <p className="text-xs text-gray-500">+15.5% from last month</p>
-                </CardContent>
-              </Card>
+                <Card className="bg-white/70 backdrop-blur-sm border border-gray-200/50 shadow-xl shadow-gray-200/20">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-700">Total Tips</CardTitle>
+                    <Percent className="h-4 w-4 text-gray-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-gray-900">₱{totalTips.toLocaleString()}</div>
+                    <p className="text-xs text-gray-500">+15.5% from last month</p>
+                  </CardContent>
+                </Card>
 
-              <Card className="bg-white/70 backdrop-blur-sm border border-gray-200/50 shadow-xl shadow-gray-200/20">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-gray-700">Commission Earned</CardTitle>
-                  <TrendingUp className="h-4 w-4 text-gray-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-gray-900">₱{totalCommissionEarned.toLocaleString()}</div>
-                  <p className="text-xs text-gray-500">+18.7% from last month</p>
-                </CardContent>
-              </Card>
+                <Card className="bg-white/70 backdrop-blur-sm border border-gray-200/50 shadow-xl shadow-gray-200/20">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-700">Commission Earned</CardTitle>
+                    <TrendingUp className="h-4 w-4 text-gray-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-gray-900">₱{totalCommissionEarned.toLocaleString()}</div>
+                    <p className="text-xs text-gray-500">+18.7% from last month</p>
+                  </CardContent>
+                </Card>
 
-              <Card className="bg-white/70 backdrop-blur-sm border border-gray-200/50 shadow-xl shadow-gray-200/20">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-gray-700">Transactions Today</CardTitle>
-                  <Users className="h-4 w-4 text-gray-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-gray-900">{transactionsToday}</div>
-                  <p className="text-xs text-gray-500">Average: ₱{averageTransaction.toLocaleString()}</p>
-                </CardContent>
-              </Card>
-            </div>
+                <Card className="bg-white/70 backdrop-blur-sm border border-gray-200/50 shadow-xl shadow-gray-200/20">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-700">Transactions Today</CardTitle>
+                    <Users className="h-4 w-4 text-gray-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-gray-900">{transactionsToday}</div>
+                    <p className="text-xs text-gray-500">Average: ₱{averageTransaction.toLocaleString()}</p>
+                  </CardContent>
+                </Card>
+              </div>
+            ) : (
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 mb-8">
+                <Card className="bg-white/70 backdrop-blur-sm border border-gray-200/50 shadow-xl shadow-gray-200/20">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-700">Current Commission</CardTitle>
+                    <TrendingUp className="h-4 w-4 text-gray-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-gray-900">
+                      ₱{currentAgentCommission.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })}
+                    </div>
+                    <p className="text-xs text-gray-500">Unpaid commissions</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white/70 backdrop-blur-sm border border-gray-200/50 shadow-xl shadow-gray-200/20">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-700">Total Commission</CardTitle>
+                    <DollarSign className="h-4 w-4 text-gray-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-gray-900">
+                      ₱{totalAgentCommission.toLocaleString(undefined, { maximumFractionDigits: 2, minimumFractionDigits: 2 })}
+                    </div>
+                    <p className="text-xs text-gray-500">All-time commissions</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white/70 backdrop-blur-sm border border-gray-200/50 shadow-xl shadow-gray-200/20">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-700">Total Tips</CardTitle>
+                    <Percent className="h-4 w-4 text-gray-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-gray-900">₱{totalTips.toLocaleString()}</div>
+                    <p className="text-xs text-gray-500">All-time tips</p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
 
             {/* Agent Earnings */}
-            {user?.role === "admin" && ( // Only show agent earnings table for admins
+            {user?.role === "admin" && (
               <Card className="bg-white/70 backdrop-blur-sm border border-gray-200/50 shadow-xl shadow-gray-200/20 mb-8">
                 <CardHeader>
                   <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
@@ -218,6 +275,7 @@ export default function AnalyticsDashboard() {
                           <TableRow>
                             <TableHead>Agent Name</TableHead>
                             <TableHead className="text-right">Total Commission</TableHead>
+                            <TableHead className="text-right">Action</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -230,6 +288,15 @@ export default function AnalyticsDashboard() {
                                   minimumFractionDigits: 2,
                                   maximumFractionDigits: 2,
                                 })}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => handleMarkPaid(agent.id)}
+                                >
+                                  Mark as Paid
+                                </Button>
                               </TableCell>
                             </TableRow>
                           ))}

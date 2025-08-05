@@ -46,6 +46,7 @@ interface ReceiptData {
   agent_id?: string;
   notes?: string;
   image_url?: string;
+  commission_paid?: boolean;
 }
 
 export default function TransactionHistory() {

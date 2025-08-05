@@ -12,6 +12,7 @@ CREATE TABLE public.receipts (
   status text NOT NULL, -- 'pending', 'completed', 'failed'
   is_valid_account boolean NOT NULL,
   agent_commission numeric,
+  commission_paid boolean DEFAULT false,
   saved_at timestamp with time zone DEFAULT now(),
   agent_id uuid REFERENCES auth.users(id) ON DELETE CASCADE, -- Foreign key to auth.users
   notes text
