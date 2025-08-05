@@ -1,31 +1,30 @@
--- Create the storage bucket if it doesn't exist
--- Set 'public' to true if you want images to be directly accessible via their public URL.
--- If 'public' is false, you would need to generate signed URLs to access them.
+-- Create a storage bucket for receipt images
 INSERT INTO storage.buckets (id, name, public)
-VALUES ('receipt-images', 'receipt-images', true)
+VALUES ('receipt_images', 'receipt_images', TRUE)
 ON CONFLICT (id) DO NOTHING;
 
--- Enable Row Level Security on the storage objects table (if not already enabled)
-ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+-- Set up RLS policies for the storage bucket
+-- Allow authenticated users to upload images to their own folder
+CREATE POLICY "Allow authenticated uploads" ON storage.objects FOR INSERT WITH CHECK (
+  bucket_id = 'receipt_images' AND auth.role() = 'authenticated' AND (storage.foldername(name))[1] = auth.uid()::text
+);
 
--- Policy for INSERT: Allow authenticated users to upload to their own folder
--- This policy ensures that a user can only upload files into a path that starts with their user ID,
--- AND that the owner of the object is the authenticated user.
-DROP POLICY IF EXISTS "Allow authenticated uploads" ON storage.objects;
-CREATE POLICY "Allow authenticated uploads"
-  ON storage.objects FOR INSERT
-  TO authenticated
-  WITH CHECK (
-    bucket_id = 'receipt-images' AND
-    auth.uid()::text = (storage.foldername(name))[1] AND
-    owner = auth.uid()
-  );
+-- Allow authenticated users to view their own images
+CREATE POLICY "Allow authenticated reads" ON storage.objects FOR SELECT USING (
+  bucket_id = 'receipt_images' AND auth.role() = 'authenticated' AND (storage.foldername(name))[1] = auth.uid()::text
+);
 
--- Policy for SELECT: Allow authenticated users to view all images in the 'receipt-images' bucket.
--- You might want to restrict this further (e.g., only admins can view all, cashiers only their own)
--- but for simplicity in this demo, all authenticated users can view all images.
-DROP POLICY IF EXISTS "Allow authenticated reads" ON storage.objects;
-CREATE POLICY "Allow authenticated reads"
-  ON storage.objects FOR SELECT
-  TO authenticated
-  USING (bucket_id = 'receipt-images');
+-- Allow authenticated users to delete their own images
+CREATE POLICY "Allow authenticated deletes" ON storage.objects FOR DELETE USING (
+  bucket_id = 'receipt_images' AND auth.role() = 'authenticated' AND (storage.foldername(name))[1] = auth.uid()::text
+);
+
+-- Allow admins to view all images (optional, but useful for dashboard)
+CREATE POLICY "Allow admin reads" ON storage.objects FOR SELECT USING (
+  bucket_id = 'receipt_images' AND EXISTS (SELECT 1 FROM public.profiles WHERE user_id = auth.uid() AND role = 'admin')
+);
+
+-- Allow admins to delete any image (optional)
+CREATE POLICY "Allow admin deletes" ON storage.objects FOR DELETE USING (
+  bucket_id = 'receipt_images' AND EXISTS (SELECT 1 FROM public.profiles WHERE user_id = auth.uid() AND role = 'admin')
+);
