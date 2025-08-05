@@ -2,7 +2,7 @@
 
 import { supabaseServer } from "@/lib/supabase-server"
 
-// Data structures for receipts (must match what's saved in Supabase)
+// ReceiptData interface
 interface ReceiptData {
   id: string
   amount: number
@@ -22,77 +22,66 @@ interface ReceiptData {
   image_url?: string
 }
 
-// Data structure for profiles (as returned by the server action)
+// ProfileData interface
 interface ProfileData {
-  id: string // This is the user_id from the profiles table
+  id: string // user_id from the profiles table
   full_name: string | null
   role: string
-  email?: string // Add email for better fallback
+  email?: string
 }
 
-/**
- * Fetches all receipts and profiles for administrative purposes.
- * This function runs on the server and uses the service role key to bypass RLS.
- * It should only be called by authenticated admin users.
- */
 export async function getAdminDashboardData(): Promise<{
   receipts: ReceiptData[] | null
   profiles: ProfileData[] | null
   error: string | null
 }> {
   try {
-    // Fetch all receipts
+    // 1. Fetch all receipts
     const { data: receiptsData, error: receiptsError } = await supabaseServer
       .from("receipts")
-      .select("agent_id, agent_commission, amount, customer_tip, saved_at") // Select necessary fields for analytics
+      .select("id, agent_id, agent_commission, amount, customer_tip, saved_at, reference_number, date_time, sender_name, receiver_name, receiver_number, transaction_type, status, is_valid_account, notes, image_url");
 
     if (receiptsError) {
-      console.error("Server Action: Error fetching receipts:", receiptsError.message)
-      return { receipts: null, profiles: null, error: "Failed to fetch receipts." }
+      console.error("Server Action: Error fetching receipts:", receiptsError.message);
+      return { receipts: null, profiles: null, error: "Failed to fetch receipts." };
     }
 
-    // Fetch all profiles
+    // 2. Fetch all profiles
     const { data: profilesData, error: profilesError } = await supabaseServer
       .from("profiles")
-      .select("user_id, full_name, role")
+      .select("user_id, full_name, role");
 
     if (profilesError) {
-      console.error("Server Action: Error fetching profiles:", profilesError.message)
-      return { receipts: null, profiles: null, error: "Failed to fetch profiles." }
+      console.error("Server Action: Error fetching profiles:", profilesError.message);
+      return { receipts: null, profiles: null, error: "Failed to fetch profiles." };
     }
 
-    // Fetch emails from auth.users for better name fallback
-    const userIds = profilesData.map((p) => p.user_id)
-    // FIX: Explicitly specify the 'auth' schema when querying the 'users' table
-   const { data: authUsersData, error: authUsersError } = await supabaseServer
-  .from("profiles", { schema: "auth" })
-  .select("id, email")
-  .in("id", userIds);
-
-
-    if (authUsersError) {
-      console.error("Server Action: Error fetching auth.users emails:", authUsersError.message)
-      // Continue without emails if there's an error, but log it.
+    // 3. Fetch all users via admin API (the correct way!)
+    const { data: usersResult, error: usersError } = await supabaseServer.auth.admin.listUsers();
+    if (usersError) {
+      console.error("Server Action: Error fetching auth.users emails:", usersError.message);
+      // Proceed without emails
     }
 
-    const authUserEmailsMap = new Map<string, string>()
-    authUsersData?.forEach((user) => {
+    // 4. Map user id to email
+    const authUserEmailsMap = new Map<string, string>();
+    usersResult?.users.forEach((user) => {
       if (user.id && user.email) {
-        authUserEmailsMap.set(user.id, user.email)
+        authUserEmailsMap.set(user.id, user.email);
       }
-    })
+    });
 
-    // Map profiles to match expected structure (id, full_name, role, email)
+    // 5. Map profiles to include emails
     const mappedProfiles: ProfileData[] = profilesData.map((p) => ({
       id: p.user_id,
       full_name: p.full_name,
       role: p.role,
-      email: authUserEmailsMap.get(p.user_id), // Add email from auth.users
-    }))
+      email: authUserEmailsMap.get(p.user_id),
+    }));
 
-    return { receipts: receiptsData, profiles: mappedProfiles, error: null }
+    return { receipts: receiptsData, profiles: mappedProfiles, error: null };
   } catch (e: any) {
-    console.error("Server Action: Unexpected error in getAdminDashboardData:", e.message)
-    return { receipts: null, profiles: null, error: "An unexpected server error occurred." }
+    console.error("Server Action: Unexpected error in getAdminDashboardData:", e.message);
+    return { receipts: null, profiles: null, error: "An unexpected server error occurred." };
   }
 }
