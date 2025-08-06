@@ -13,12 +13,14 @@ interface NavItem {
   href: string
   badge?: number
   adminOnly?: boolean
+  agentOnly?: boolean
 }
 
 const navItems: NavItem[] = [
   { icon: Scan, label: "Scanner", href: "/" },
   { icon: History, label: "History", href: "/history" },
   { icon: BarChart3, label: "Analytics", href: "/analytics" },
+  { icon: CreditCard, label: "Payouts", href: "/payouts", agentOnly: true },
   { icon: CreditCard, label: "Accounts", href: "/accounts", adminOnly: true },
   { icon: Settings, label: "Admin", href: "/admin", adminOnly: true },
 ]
@@ -31,6 +33,9 @@ export default function ModernNav() {
   // Filter nav items based on user role
   const filteredNavItems = navItems.filter((item) => {
     if (item.adminOnly && user?.role !== "admin") {
+      return false
+    }
+    if (item.agentOnly && user?.role !== "cashier") {
       return false
     }
     return true
