@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { DollarSign, TrendingUp, Percent, Users } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useAuth } from "./auth-context-fixed"
 import { getAdminDashboardData, markAgentCommissionPaid } from "@/actions/admin" // Import server actions
 import { Button } from "@/components/ui/button"
@@ -52,6 +53,13 @@ export default function AnalyticsDashboard() {
   const [currentAgentCommission, setCurrentAgentCommission] = useState(0)
   const [totalAgentCommission, setTotalAgentCommission] = useState(0)
   const [totalAgentTips, setTotalAgentTips] = useState(0) // New state for total agent tips
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [selectedAgent, setSelectedAgent] = useState<{
+    id: string
+    name: string
+    receiptCount: number
+    totalCommission: number
+  } | null>(null)
 
   const fetchAnalyticsData = useCallback(async () => {
     if (userLoading) return
@@ -127,23 +135,32 @@ export default function AnalyticsDashboard() {
     fetchAnalyticsData()
   }, [fetchAnalyticsData])
 
-  const handleMarkPaid = async (agentId: string) => {
-    if (
-      !confirm(
-        "Are you sure you want to mark all unpaid commissions for this agent as paid? This action cannot be undone.",
-      )
-    ) {
-      return
-    }
+  const handleMarkPaid = (agent: { id: string; name: string; totalCommission: number }) => {
+    const receiptsForAgent = allReceipts.filter(
+      (r) => r.agent_id === agent.id && !r.is_commission_paid,
+    )
+    setSelectedAgent({
+      id: agent.id,
+      name: agent.name,
+      receiptCount: receiptsForAgent.length,
+      totalCommission: receiptsForAgent.reduce((sum, r) => sum + (r.agent_commission || 0), 0),
+    })
+    setConfirmOpen(true)
+  }
+
+  const confirmMarkPaid = async () => {
+    if (!selectedAgent) return
     setLoading(true)
-    const { error } = await markAgentCommissionPaid(agentId)
+    const { error } = await markAgentCommissionPaid(selectedAgent.id)
     if (error) {
       alert(`Failed to mark commissions as paid: ${error}`)
     } else {
       alert("Commissions marked as paid successfully!")
-      fetchAnalyticsData() // Re-fetch data to update the dashboard
+      fetchAnalyticsData()
     }
     setLoading(false)
+    setConfirmOpen(false)
+    setSelectedAgent(null)
   }
 
   // Mock data for other analytics metrics (can be replaced with real data later)
@@ -157,8 +174,9 @@ export default function AnalyticsDashboard() {
   const averageTransaction = transactionsToday > 0 ? totalSales / transactionsToday : 0
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 md:pb-8">
+    <>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 md:pb-8">
         <div className="text-center mb-8">
           <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent mb-3">
             Analytics Dashboard
@@ -309,7 +327,7 @@ export default function AnalyticsDashboard() {
                                 })}
                               </TableCell>
                               <TableCell className="text-right">
-                                <Button size="sm" variant="secondary" onClick={() => handleMarkPaid(agent.id)}>
+                                <Button size="sm" variant="secondary" onClick={() => handleMarkPaid(agent)}>
                                   Mark as Paid
                                 </Button>
                               </TableCell>
@@ -338,5 +356,39 @@ export default function AnalyticsDashboard() {
         )}
       </div>
     </div>
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Payout</DialogTitle>
+            <DialogDescription>
+              {selectedAgent
+                ? `Mark ${selectedAgent.receiptCount} receipts for ${selectedAgent.name} as paid?`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-2">
+            <p>
+              <strong>Agent:</strong> {selectedAgent?.name}
+            </p>
+            <p>
+              <strong>Receipts:</strong> {selectedAgent?.receiptCount}
+            </p>
+            <p>
+              <strong>Total Payout:</strong> ₱
+              {selectedAgent?.totalCommission.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={confirmMarkPaid}>Confirm</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
