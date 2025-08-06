@@ -1,9 +1,10 @@
 import { ModernNav } from "@/components/modern-nav"
 import { ProtectedRoute } from "@/components/protected-route"
 import TransactionHistory from "@/components/transaction-history"
-import { supabaseServer } from "@/lib/supabase-server"
+import { createClient } from "@/lib/supabase-server"
 
 export default async function HistoryPage() {
+  const supabaseServer = createClient()
   const {
     data: { user },
   } = await supabaseServer.auth.getUser()

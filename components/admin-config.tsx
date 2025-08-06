@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Save, TestTube, Eye, EyeOff, Copy, UserPlus } from "lucide-react"
 import ModernNav from "./modern-nav"
-import ProtectedRoute from "./protected-route"
+import { ProtectedRoute } from "./protected-route"
 import { useAuth } from "./auth-context-fixed"
 import { updateProfile, deleteProfile } from "@/actions/profile"
 import { supabase } from "@/lib/supabase" // Client-side Supabase client for real-time updates
@@ -653,7 +653,7 @@ function AdminConfigContent({ initialProfiles }: AdminConfigProps) {
 
 export default function AdminConfig({ initialProfiles }: AdminConfigProps) {
   return (
-    <ProtectedRoute requiredRole="admin">
+    <ProtectedRoute allowedRoles={["admin"]}>
       <AdminConfigContent initialProfiles={initialProfiles} />
     </ProtectedRoute>
   )

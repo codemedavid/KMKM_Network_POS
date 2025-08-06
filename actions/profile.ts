@@ -1,6 +1,6 @@
 "use server"
 
-import { supabaseServer } from "@/lib/supabase-server"
+import { createClient } from "@/lib/supabase-server"
 
 interface ProfileUpdateData {
   full_name?: string
@@ -12,6 +12,7 @@ export async function updateProfile(
   data: ProfileUpdateData,
 ): Promise<{ success: boolean; error: string | null }> {
   try {
+    const supabaseServer = createClient()
     const { error } = await supabaseServer.from("profiles").update(data).eq("user_id", userId)
 
     if (error) {
@@ -28,6 +29,7 @@ export async function updateProfile(
 
 export async function deleteProfile(userId: string): Promise<{ success: boolean; error: string | null }> {
   try {
+    const supabaseServer = createClient()
     // First, delete the user from auth.users
     const { error: authError } = await supabaseServer.auth.admin.deleteUser(userId)
 
