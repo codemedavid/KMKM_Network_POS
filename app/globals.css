@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -145,60 +144,5 @@
 
   .shadow-neumorphic-subtle {
     box-shadow: 4px 4px 8px rgba(163, 177, 198, 0.4), -4px -4px 8px rgba(255, 255, 255, 0.6);
-  }
-
-  /* Neumorphic styles */
-  .neumorphic-card {
-    border-radius: 12px;
-    background: #e0e0e0;
-    box-shadow: 8px 8px 16px #bebebe, -8px -8px 16px #ffffff;
-  }
-
-  .dark .neumorphic-card {
-    background: #2c2c2c;
-    box-shadow: 8px 8px 16px #202020, -8px -8px 16px #383838;
-  }
-
-  .neumorphic-input {
-    border-radius: 8px;
-    background: #e0e0e0;
-    box-shadow: inset 5px 5px 10px #bebebe, inset -5px -5px 10px #ffffff;
-    padding: 10px 15px;
-    border: none;
-    outline: none;
-    transition: all 0.2s ease-in-out;
-  }
-
-  .dark .neumorphic-input {
-    background: #2c2c2c;
-    box-shadow: inset 5px 5px 10px #202020, inset -5px -5px 10px #383838;
-  }
-
-  .neumorphic-input:focus {
-    box-shadow: inset 2px 2px 5px #bebebe, inset -2px -2px 5px #ffffff;
-  }
-
-  .dark .neumorphic-input:focus {
-    box-shadow: inset 2px 2px 5px #202020, inset -2px -2px 5px #383838;
-  }
-
-  .neumorphic-button {
-    border-radius: 8px;
-    background: #e0e0e0;
-    box-shadow: 5px 5px 10px #bebebe, -5px -5px 10px #ffffff;
-    transition: all 0.2s ease-in-out;
-  }
-
-  .dark .neumorphic-button {
-    background: #2c2c2c;
-    box-shadow: 5px 5px 10px #202020, -5px -5px 10px #383838;
-  }
-
-  .neumorphic-button:active {
-    box-shadow: inset 2px 2px 5px #bebebe, inset -2px -2px 5px #ffffff;
-  }
-
-  .dark .neumorphic-button:active {
-    box-shadow: inset 2px 2px 5px #202020, inset -2px -2px 5px #383838;
   }
 }

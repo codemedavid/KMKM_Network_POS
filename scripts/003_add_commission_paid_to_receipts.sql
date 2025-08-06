@@ -1,6 +1,6 @@
-
--- Add is_commission_paid column to receipts table
+-- Add commission_paid column to track payout status of agent commissions
 ALTER TABLE public.receipts
-ADD COLUMN is_commission_paid BOOLEAN DEFAULT FALSE;
+ADD COLUMN commission_paid boolean DEFAULT false;
 
--- Optional: Add an index for faster queries on agent_id and is_commission_paid
+-- Index to optimize queries filtering by agent and payout status
+CREATE INDEX IF NOT EXISTS receipts_agent_paid_idx ON public.receipts (agent_id, commission_paid);

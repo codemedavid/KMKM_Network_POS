@@ -1,9 +1,8 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect } from "react"
+import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import { supabase } from "@/lib/supabase" // Import Supabase client
 import type { User as SupabaseUser } from "@supabase/supabase-js"
-import { getUserProfile } from "@/actions/profile" // Import the new Server Action
 
 interface User {
   id: string
@@ -18,41 +17,25 @@ interface AuthContextType {
   logout: () => void
   register: (name: string, email: string, password: string, role: "admin" | "cashier") => Promise<boolean>
   isLoading: boolean
+  // Removed 'users' from AuthContextType as it will be fetched in specific components (e.g., AnalyticsDashboard)
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-export function AuthProvider({ children }: { ReactNode }) {
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   // Helper to map Supabase user to our internal User type
-  // This function now fetches the role from the 'profiles' table via a Server Action
-  const mapSupabaseUser = async (sbUser: SupabaseUser | null): Promise<User | null> => {
+  const mapSupabaseUser = (sbUser: SupabaseUser | null): User | null => {
     if (!sbUser) return null
-
-    // Fetch the user's profile using the Server Action
-    const { profile, error } = await getUserProfile(sbUser.id)
-
-    let userName: string | null = null
-    let userRole: "admin" | "cashier" = "cashier" // Default role
-
-    if (error || !profile) {
-      console.error("Error fetching profile for user via Server Action:", sbUser.id, error)
-      // Fallback to user_metadata if profile not found or error occurs
-      userName = sbUser.user_metadata?.full_name || sbUser.email || "User"
-      userRole = (sbUser.user_metadata?.role || "cashier") as "admin" | "cashier"
-    } else {
-      // Use data from profile table first
-      userName = profile.full_name || sbUser.user_metadata?.full_name || sbUser.email || "User"
-      userRole = (profile.role || "cashier") as "admin" | "cashier"
-    }
-
+    // IMPORTANT: Read role from user_metadata as set during signUp
+    const role = (sbUser.user_metadata?.role || "cashier") as "admin" | "cashier"
     return {
       id: sbUser.id,
-      name: userName,
+      name: sbUser.user_metadata?.full_name || sbUser.email || "User",
       email: sbUser.email!,
-      role: userRole,
+      role,
     }
   }
 
@@ -65,7 +48,7 @@ export function AuthProvider({ children }: { ReactNode }) {
       } = supabase.auth.onAuthStateChange(async (event, session) => {
         setIsLoading(true)
         if (session?.user) {
-          const currentUser = await mapSupabaseUser(session.user) // AWAIT the async mapping
+          const currentUser = mapSupabaseUser(session.user)
           setUser(currentUser)
         } else {
           setUser(null)
@@ -85,7 +68,7 @@ export function AuthProvider({ children }: { ReactNode }) {
           error,
         } = await supabase.auth.getSession()
         if (session?.user) {
-          const currentUser = await mapSupabaseUser(session.user) // AWAIT the async mapping
+          const currentUser = mapSupabaseUser(session.user)
           setUser(currentUser)
         } else {
           setUser(null)
@@ -149,14 +132,11 @@ export function AuthProvider({ children }: { ReactNode }) {
       setIsLoading(false)
       return false
     }
-    // When signing up, we pass the role in user_metadata.
-    // The 'handle_new_user' trigger (from scripts/007_update_profiles_and_rls.sql)
-    // will then read this from user_metadata and insert it into the 'profiles' table.
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { full_name: name, role: role }, // Store name and role in user_metadata for trigger
+        data: { full_name: name, role: role }, // Store name and role in user_metadata
       },
     })
     setIsLoading(false)
@@ -165,8 +145,7 @@ export function AuthProvider({ children }: { ReactNode }) {
       return false
     }
     if (data.user) {
-      // After successful signup, the trigger should have created the profile.
-      // We don't need to manually update 'users' state here as it's removed from AuthContext.
+      // No need to update 'users' state here, as it's removed from AuthContext
       return true
     }
     return false

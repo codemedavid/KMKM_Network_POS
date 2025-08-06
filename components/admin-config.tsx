@@ -1,21 +1,19 @@
 "use client"
 
-import { Badge } from "@/components/ui/badge"
-
 import type React from "react"
-import { useState, useEffect, useCallback } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+
+import { useState } from "react"
+import { Save, TestTube, Eye, EyeOff, Copy, UserPlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Save, TestTube, Eye, EyeOff, Copy, UserPlus } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
+import { Switch } from "@/components/ui/switch"
+import { Badge } from "@/components/ui/badge"
 import ModernNav from "./modern-nav"
-import { ProtectedRoute } from "./protected-route"
+import ProtectedRoute from "./protected-route"
 import { useAuth } from "./auth-context-fixed"
-import { updateProfile, deleteProfile } from "@/actions/profile"
-import { supabase } from "@/lib/supabase" // Client-side Supabase client for real-time updates
 
 interface AdminConfig {
   targetGCashNumber: string
@@ -31,18 +29,6 @@ interface AdminConfig {
   }
   serviceCommissionRate: number
   tipCommissionRate: number
-}
-
-interface Profile {
-  id: string
-  full_name: string | null
-  role: string
-  email?: string // Added email for display
-}
-
-interface AdminConfigProps {
-  initialProfiles: Profile[]
-  initialReceipts: any[] // Receipts are not directly used here, but passed from page
 }
 
 const defaultConfig: AdminConfig = {
@@ -71,71 +57,21 @@ const availableFields = [
 
 const sampleTestData = `RE.«<E V. +63 915 642 9591 Sent via GCash Amount 2,080.00 Total Amount Sent £2080.00 Ref No. 8031350663152 Aug 5, 2025 12:33 AM`
 
-function AdminConfigContent({ initialProfiles }: AdminConfigProps) {
+function AdminConfigContent() {
   const [config, setConfig] = useState<AdminConfig>(defaultConfig)
   const [showPatterns, setShowPatterns] = useState(false)
   const [testText, setTestText] = useState(sampleTestData)
   const [testResults, setTestResults] = useState<any>(null)
-  const { user: currentUser, isLoading: userLoading } = useAuth()
-  const [profiles, setProfiles] = useState<Profile[]>(initialProfiles)
-  const [newAgentName, setNewAgentName] = useState("")
-  const [newAgentEmail, setNewAgentEmail] = useState("")
-  const [newAgentPassword, setNewAgentPassword] = useState("")
-  const [newAgentRole, setNewAgentRole] = useState("cashier") // Default role
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
 
-  const fetchProfiles = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    setSuccess(null)
-    const { data, error } = await supabase.from("profiles").select("user_id, full_name, role")
-    if (error) {
-      console.error("Error fetching profiles:", error.message)
-      setError("Failed to fetch profiles.")
-    } else {
-      // Fetch emails from auth.users for better name fallback
-      const userIds = data.map((p) => p.user_id)
-      const { data: authUsersData, error: authUsersError } = await supabase
-        .from("users", { schema: "auth" })
-        .select("id, email")
-        .in("id", userIds)
+  const { register } = useAuth() // Only need register here
+  const [agentName, setAgentName] = useState("")
+  const [agentEmail, setAgentEmail] = useState("")
+  const [agentPassword, setAgentPassword] = useState("")
+  const [addAgentError, setAddAgentError] = useState("")
+  const [addAgentSuccess, setAddAgentSuccess] = useState("")
+  const [showAgentPassword, setShowAgentPassword] = useState(false)
 
-      const authUserEmailsMap = new Map<string, string>()
-      authUsersData?.forEach((user) => {
-        if (user.id && user.email) {
-          authUserEmailsMap.set(user.id, user.email)
-        }
-      })
-
-      const mappedProfiles: Profile[] = data.map((p) => ({
-        id: p.user_id,
-        full_name: p.full_name,
-        role: p.role,
-        email: authUserEmailsMap.get(p.user_id),
-      }))
-      setProfiles(mappedProfiles)
-    }
-    setLoading(false)
-  }, [])
-
-  useEffect(() => {
-    fetchProfiles()
-
-    // Set up real-time listener for profiles table
-    const channel = supabase
-      .channel("profiles_changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, (payload) => {
-        console.log("Change received!", payload)
-        fetchProfiles() // Re-fetch profiles on any change
-      })
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [fetchProfiles])
+  // Agent earnings logic moved to AnalyticsDashboard
 
   const updateConfig = (updates: Partial<AdminConfig>) => {
     setConfig((prev) => ({ ...prev, ...updates }))
@@ -194,84 +130,23 @@ function AdminConfigContent({ initialProfiles }: AdminConfigProps) {
 
   const handleAddAgent = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
-    setError(null)
-    setSuccess(null)
+    setAddAgentError("")
+    setAddAgentSuccess("")
 
-    if (!newAgentEmail || !newAgentPassword) {
-      setError("Email and password are required.")
-      setLoading(false)
+    if (!agentName || !agentEmail || !agentPassword) {
+      setAddAgentError("Please fill in all fields.")
       return
     }
 
-    try {
-      // 1. Create user in auth.users
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-        email: newAgentEmail,
-        password: newAgentPassword,
-        email_confirm: true, // Automatically confirm email for admin-created users
-        user_metadata: { full_name: newAgentName, role: newAgentRole }, // Pass full_name and role
-      })
-
-      if (authError) {
-        setError(`Error creating user: ${authError.message}`)
-        setLoading(false)
-        return
-      }
-
-      // The 'handle_new_user' trigger should automatically create the profile in public.profiles
-      // with the full_name and role from user_metadata.
-      setSuccess(`Agent "${newAgentName || newAgentEmail}" added successfully!`)
-      setNewAgentName("")
-      setNewAgentEmail("")
-      setNewAgentPassword("")
-      setNewAgentRole("cashier") // Reset to default
-      fetchProfiles() // Re-fetch to show the new agent
-    } catch (err: any) {
-      console.error("Unexpected error adding agent:", err.message)
-      setError("An unexpected error occurred while adding the agent.")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleUpdateRole = async (userId: string, newRole: string) => {
-    if (currentUser?.id === userId) {
-      alert("You cannot change your own role.")
-      return
-    }
-    setLoading(true)
-    setError(null)
-    setSuccess(null)
-    const { success, error } = await updateProfile(userId, { role: newRole })
-    if (error) {
-      setError(`Failed to update role: ${error}`)
+    const success = await register(agentName, agentEmail, agentPassword, "cashier")
+    if (success) {
+      setAddAgentSuccess("Agent account added successfully! User will receive a confirmation email.")
+      setAgentName("")
+      setAgentEmail("")
+      setAgentPassword("")
     } else {
-      setSuccess("Agent role updated successfully!")
-      fetchProfiles() // Re-fetch to show updated role
+      setAddAgentError("Failed to add agent. Email might already be in use or password too weak.")
     }
-    setLoading(false)
-  }
-
-  const handleDeleteAgent = async (userId: string, agentName: string) => {
-    if (currentUser?.id === userId) {
-      alert("You cannot delete your own account.")
-      return
-    }
-    if (!confirm(`Are you sure you want to delete agent "${agentName}"? This action cannot be undone.`)) {
-      return
-    }
-    setLoading(true)
-    setError(null)
-    setSuccess(null)
-    const { success, error } = await deleteProfile(userId)
-    if (error) {
-      setError(`Failed to delete agent: ${error}`)
-    } else {
-      setSuccess("Agent deleted successfully!")
-      fetchProfiles() // Re-fetch to show updated list
-    }
-    setLoading(false)
   }
 
   return (
@@ -336,14 +211,10 @@ function AdminConfigContent({ initialProfiles }: AdminConfigProps) {
                       <div className="font-medium text-gray-900">{field.label}</div>
                       <div className="text-sm text-gray-600">{field.description}</div>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => toggleRequiredField(field.key)}
-                      className="border-gray-300 hover:border-gray-400 shadow-sm"
-                    >
-                      {config.requiredFields.includes(field.key) ? "Remove" : "Add"}
-                    </Button>
+                    <Switch
+                      checked={config.requiredFields.includes(field.key)}
+                      onCheckedChange={() => toggleRequiredField(field.key)}
+                    />
                   </div>
                 ))}
               </CardContent>
@@ -407,11 +278,11 @@ function AdminConfigContent({ initialProfiles }: AdminConfigProps) {
                       <Label className="text-sm font-medium text-gray-700 capitalize">
                         {key.replace(/([A-Z])/g, " $1").toLowerCase()} Pattern
                       </Label>
-                      <Input
+                      <Textarea
                         value={pattern}
                         onChange={(e) => updateExtractionRule(key, e.target.value)}
                         className="bg-white/50 border-gray-200 focus:border-purple-500 focus:ring-purple-500/20 rounded-xl font-mono text-sm shadow-sm"
-                        placeholder="Enter regex pattern here"
+                        rows={2}
                       />
                     </div>
                   ))}
@@ -430,126 +301,72 @@ function AdminConfigContent({ initialProfiles }: AdminConfigProps) {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <form onSubmit={handleAddAgent} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <form onSubmit={handleAddAgent} className="space-y-4">
+                  {addAgentError && (
+                    <Badge variant="destructive" className="w-full justify-center py-2">
+                      {addAgentError}
+                    </Badge>
+                  )}
+                  {addAgentSuccess && (
+                    <Badge className="w-full justify-center py-2 bg-emerald-500 text-white">{addAgentSuccess}</Badge>
+                  )}
                   <div className="space-y-2">
-                    <Label htmlFor="newAgentName">Full Name (Optional)</Label>
+                    <Label htmlFor="agent-name" className="text-sm font-medium text-gray-700">
+                      Agent Name
+                    </Label>
                     <Input
-                      id="newAgentName"
-                      value={newAgentName}
-                      onChange={(e) => setNewAgentName(e.target.value)}
+                      id="agent-name"
+                      value={agentName}
+                      onChange={(e) => setAgentName(e.target.value)}
+                      className="h-12 bg-white/50 border-gray-200 focus:border-purple-500 focus:ring-purple-500/20 rounded-xl shadow-sm"
                       placeholder="John Doe"
-                      className="neumorphic-input"
+                      required
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="newAgentEmail">Email</Label>
+                    <Label htmlFor="agent-email" className="text-sm font-medium text-gray-700">
+                      Email
+                    </Label>
                     <Input
-                      id="newAgentEmail"
+                      id="agent-email"
                       type="email"
-                      value={newAgentEmail}
-                      onChange={(e) => setNewAgentEmail(e.target.value)}
-                      placeholder="agent@example.com"
+                      value={agentEmail}
+                      onChange={(e) => setAgentEmail(e.target.value)}
+                      className="h-12 bg-white/50 border-gray-200 focus:border-purple-500 focus:ring-purple-500/20 rounded-xl shadow-sm"
+                      placeholder="agent@gcashpos.com"
                       required
-                      className="neumorphic-input"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="newAgentPassword">Password</Label>
-                    <Input
-                      id="newAgentPassword"
-                      type="password"
-                      value={newAgentPassword}
-                      onChange={(e) => setNewAgentPassword(e.target.value)}
-                      placeholder="••••••••"
-                      required
-                      className="neumorphic-input"
-                    />
+                    <Label htmlFor="agent-password" className="text-sm font-medium text-gray-700">
+                      Password
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id="agent-password"
+                        type={showAgentPassword ? "text" : "password"}
+                        value={agentPassword}
+                        onChange={(e) => setAgentPassword(e.target.value)}
+                        className="pr-10 h-12 bg-white/50 border-gray-200 focus:border-purple-500 focus:ring-purple-500/20 rounded-xl shadow-sm"
+                        placeholder="Set initial password"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowAgentPassword(!showAgentPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 transition-colors"
+                      >
+                        {showAgentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="newAgentRole">Role</Label>
-                    <Select value={newAgentRole} onValueChange={setNewAgentRole}>
-                      <SelectTrigger id="newAgentRole" className="neumorphic-input">
-                        <SelectValue placeholder="Select role" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="cashier">Cashier</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="md:col-span-2 flex justify-end">
-                    <Button type="submit" disabled={loading} className="neumorphic-button">
-                      {loading ? "Adding Agent..." : "Add Agent"}
-                    </Button>
-                  </div>
+                  <Button
+                    type="submit"
+                    className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-200"
+                  >
+                    Add Agent
+                  </Button>
                 </form>
-              </CardContent>
-            </Card>
-
-            {/* Manage Agents */}
-            <Card className="bg-white/70 backdrop-blur-sm border border-gray-200/50 shadow-xl shadow-gray-200/20">
-              <CardHeader>
-                <CardTitle className="text-lg font-semibold text-gray-900">Manage Agents</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loading && profiles.length === 0 ? (
-                  <div className="text-center py-4 text-gray-500">Loading agents...</div>
-                ) : profiles.length === 0 ? (
-                  <div className="text-center py-4 text-gray-500">No agents found.</div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Name</TableHead>
-                          <TableHead>Email</TableHead>
-                          <TableHead>Role</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {profiles.map((profile) => (
-                          <TableRow key={profile.id}>
-                            <TableCell className="font-medium">
-                              {profile.full_name || profile.email || `Agent ${profile.id.substring(0, 4)}`}
-                            </TableCell>
-                            <TableCell>{profile.email || "N/A"}</TableCell>
-                            <TableCell>
-                              <Select
-                                value={profile.role}
-                                onValueChange={(newRole) => handleUpdateRole(profile.id, newRole)}
-                                disabled={currentUser?.id === profile.id || loading}
-                              >
-                                <SelectTrigger className="w-[120px] h-8 text-xs">
-                                  <SelectValue placeholder="Select role" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="cashier">Cashier</SelectItem>
-                                  <SelectItem value="admin">Admin</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() =>
-                                  handleDeleteAgent(
-                                    profile.id,
-                                    profile.full_name || profile.email || `Agent ${profile.id.substring(0, 4)}`,
-                                  )
-                                }
-                                disabled={currentUser?.id === profile.id || loading}
-                              >
-                                Delete
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
               </CardContent>
             </Card>
 
@@ -577,11 +394,12 @@ function AdminConfigContent({ initialProfiles }: AdminConfigProps) {
                   <Label htmlFor="test-text" className="text-sm font-medium text-gray-700">
                     Sample Receipt Text
                   </Label>
-                  <Input
+                  <Textarea
                     id="test-text"
                     value={testText}
                     onChange={(e) => setTestText(e.target.value)}
                     className="bg-white/50 border-gray-200 focus:border-purple-500 focus:ring-purple-500/20 rounded-xl font-mono text-sm shadow-sm"
+                    rows={6}
                     placeholder="Paste sample receipt text here to test extraction patterns..."
                   />
                 </div>
@@ -651,10 +469,10 @@ function AdminConfigContent({ initialProfiles }: AdminConfigProps) {
   )
 }
 
-export default function AdminConfig({ initialProfiles }: AdminConfigProps) {
+export default function AdminConfig() {
   return (
-    <ProtectedRoute allowedRoles={["admin"]}>
-      <AdminConfigContent initialProfiles={initialProfiles} />
+    <ProtectedRoute requiredRole="admin">
+      <AdminConfigContent />
     </ProtectedRoute>
   )
 }
