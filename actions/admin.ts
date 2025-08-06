@@ -1,6 +1,6 @@
 "use server"
 
-import { supabaseServer } from "@/lib/supabase-server"
+import { createClient } from "@/lib/supabase-server"
 import { createPayoutForAgent } from "./payouts"
 
 // ReceiptData interface
@@ -38,6 +38,7 @@ export async function getAdminDashboardData(): Promise<{
   error: string | null
 }> {
   try {
+    const supabaseServer = createClient()
     // 1. Fetch all receipts
     const { data: receiptsData, error: receiptsError } = await supabaseServer.from("receipts").select(
       "id, agent_id, agent_commission, amount, customer_tip, saved_at, reference_number, date_time, sender_name, receiver_name, receiver_number, transaction_type, status, is_valid_account, notes, image_url, is_commission_paid", // Corrected column name

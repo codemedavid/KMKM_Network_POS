@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import Image from "next/image"
 import ModernNav from "./modern-nav"
-import ProtectedRoute from "./protected-route"
+import { ProtectedRoute } from "./protected-route"
 import { useAuth } from "./auth-context-fixed"
 
 // Import Tesseract.js
@@ -817,7 +817,7 @@ function ReceiptCaptureContent() {
 
 export default function ReceiptCapture() {
   return (
-    <ProtectedRoute>
+    <ProtectedRoute allowedRoles={["admin", "cashier"]}>
       <ReceiptCaptureContent />
     </ProtectedRoute>
   )

@@ -1,6 +1,6 @@
 "use server"
 
-import { supabaseServer } from "@/lib/supabase-server"
+import { createClient } from "@/lib/supabase-server"
 
 interface Receipt {
   id: string
@@ -9,6 +9,7 @@ interface Receipt {
 
 export async function createPayoutForAgent(agentId: string): Promise<{ error: string | null }> {
   try {
+    const supabaseServer = createClient()
     // 1. Get all unpaid receipts for the agent
     const { data: receipts, error: receiptsError } = await supabaseServer
       .from("receipts")
