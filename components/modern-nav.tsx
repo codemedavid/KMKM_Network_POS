@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { Scan, Settings, BarChart3, History, User, LogOut } from "lucide-react"
+import { Scan, Settings, BarChart3, History, User, LogOut, CreditCard } from "lucide-react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "./auth-context-fixed"
@@ -19,6 +19,7 @@ const navItems: NavItem[] = [
   { icon: Scan, label: "Scanner", href: "/" },
   { icon: History, label: "History", href: "/history" },
   { icon: BarChart3, label: "Analytics", href: "/analytics" },
+  { icon: CreditCard, label: "Accounts", href: "/accounts", adminOnly: true },
   { icon: Settings, label: "Admin", href: "/admin", adminOnly: true },
   { icon: User, label: "Profile", href: "/profile" },
 ]

@@ -89,7 +89,62 @@ export async function getAdminDashboardData(): Promise<{
   }
 }
 
-export async function markAgentCommissionPaid(agentId: string): Promise<{ error: string | null }> {
+// PayoutDetails interface
+export interface PayoutDetails {
+  payoutAmount: number
+  payoutMethod: string
+  referenceNumber: string
+  notes?: string
+  payoutDate: string
+}
+
+export async function markAgentCommissionPaid(
+  agentId: string, 
+  payoutDetails: PayoutDetails, 
+  adminId: string
+): Promise<{ error: string | null }> {
+  try {
+    // Start a transaction by first inserting the payout record
+    const { data: payoutData, error: payoutError } = await supabaseServer
+      .from("payouts")
+      .insert({
+        agent_id: agentId,
+        payout_amount: payoutDetails.payoutAmount,
+        payout_method: payoutDetails.payoutMethod,
+        reference_number: payoutDetails.referenceNumber,
+        payout_date: payoutDetails.payoutDate,
+        notes: payoutDetails.notes,
+        created_by: adminId
+      })
+      .select()
+
+    if (payoutError) {
+      console.error("Server Action: Error creating payout record:", payoutError.message)
+      return { error: payoutError.message }
+    }
+
+    // Then mark all unpaid commissions for this agent as paid
+    const { error: updateError } = await supabaseServer
+      .from("receipts")
+      .update({ commission_paid: true })
+      .eq("agent_id", agentId)
+      .eq("commission_paid", false)
+
+    if (updateError) {
+      console.error("Server Action: Error marking commission as paid:", updateError.message)
+      // TODO: In a real app, you might want to implement rollback logic here
+      return { error: updateError.message }
+    }
+
+    return { error: null }
+  } catch (e: any) {
+    console.error("Server Action: Unexpected error in markAgentCommissionPaid:", e.message)
+    return { error: "An unexpected server error occurred." }
+  }
+}
+
+// Legacy function for backward compatibility (simplified version)
+export async function markAgentCommissionPaidSimple(agentId: string): Promise<{ error: string | null }> {
   try {
     const { error } = await supabaseServer
       .from("receipts")
@@ -104,7 +159,77 @@ export async function markAgentCommissionPaid(agentId: string): Promise<{ error:
 
     return { error: null }
   } catch (e: any) {
-    console.error("Server Action: Unexpected error in markAgentCommissionPaid:", e.message)
+    console.error("Server Action: Unexpected error in markAgentCommissionPaidSimple:", e.message)
     return { error: "An unexpected server error occurred." }
+  }
+}
+
+// Get payout history for an agent
+export async function getAgentPayoutHistory(agentId?: string): Promise<{
+  payouts: any[] | null
+  error: string | null
+}> {
+  try {
+    // First, get the payouts
+    let query = supabaseServer
+      .from("payouts")
+      .select(`
+        id,
+        agent_id,
+        payout_amount,
+        payout_method,
+        reference_number,
+        payout_date,
+        notes,
+        created_at,
+        created_by
+      `)
+      .order("created_at", { ascending: false })
+
+    // If agentId is provided, filter by that agent
+    if (agentId) {
+      query = query.eq("agent_id", agentId)
+    }
+
+    const { data: payouts, error } = await query
+
+    if (error) {
+      console.error("Server Action: Error fetching payout history:", error.message)
+      return { payouts: null, error: error.message }
+    }
+
+    // If we have payouts, fetch the corresponding profiles
+    if (payouts && payouts.length > 0) {
+      const agentIds = [...new Set(payouts.map(p => p.agent_id))]
+      
+      const { data: profiles, error: profilesError } = await supabaseServer
+        .from("profiles")
+        .select("user_id, full_name")
+        .in("user_id", agentIds)
+
+      if (profilesError) {
+        console.error("Server Action: Error fetching profiles for payouts:", profilesError.message)
+        // Continue without profile names rather than failing completely
+      }
+
+      // Map profiles to payouts
+      const profileMap = new Map()
+      profiles?.forEach(profile => {
+        profileMap.set(profile.user_id, profile)
+      })
+
+      // Add profile information to payouts
+      const payoutsWithProfiles = payouts.map(payout => ({
+        ...payout,
+        profiles: profileMap.get(payout.agent_id) || null
+      }))
+
+      return { payouts: payoutsWithProfiles, error: null }
+    }
+
+    return { payouts: payouts || [], error: null }
+  } catch (e: any) {
+    console.error("Server Action: Unexpected error in getAgentPayoutHistory:", e.message)
+    return { payouts: null, error: "An unexpected server error occurred." }
   }
 }

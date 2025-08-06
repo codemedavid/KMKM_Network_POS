@@ -21,6 +21,8 @@ import Tesseract from "tesseract.js"
 
 import { supabase } from "@/lib/supabase" // Add this import
 import { v4 as uuidv4 } from "uuid" // Import uuid for unique file names
+import { getPaymentAccounts } from "@/actions/accounts"
+import { processImageWithOCRAndPatterns } from "@/lib/receipt-processing"
 
 // Data structures
 interface ReceiptData {
@@ -96,7 +98,7 @@ function ReceiptCaptureContent() {
   })
   const [extractedData, setExtractedData] = useState<Partial<ReceiptData>>({})
   const [isDragOver, setIsDragOver] = useState(false)
-  const [adminConfig] = useState<AdminConfig>(defaultAdminConfig)
+  const [adminConfig, setAdminConfig] = useState<AdminConfig>(defaultAdminConfig)
   const [validationErrors, setValidationErrors] = useState<string[]>([])
   const [agentCommission, setAgentCommission] = useState<number>(0)
 
@@ -104,6 +106,35 @@ function ReceiptCaptureContent() {
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
+
+  // Load accounts and update config
+  const loadAccounts = async () => {
+    try {
+      const { accounts } = await getPaymentAccounts()
+      const activeAccounts = accounts?.filter((a: any) => a.is_active) || []
+      
+      if (activeAccounts.length > 0) {
+        // Use the first primary account, or the first active account
+        const primaryAccount = activeAccounts.find((a: any) => a.is_primary) || activeAccounts[0]
+        
+        const newConfig: AdminConfig = {
+          ...defaultAdminConfig,
+          targetGCashNumber: primaryAccount.account_number,
+          targetGCashName: primaryAccount.account_holder_name,
+        }
+        
+        setAdminConfig(newConfig)
+        console.log("Updated admin config with account:", primaryAccount.account_name)
+      }
+    } catch (error) {
+      console.error("Failed to load accounts:", error)
+    }
+  }
+
+  // Load accounts on component mount
+  useEffect(() => {
+    loadAccounts()
+  }, [])
 
   // Effect to recalculate agent commission when amount or tip changes
   useEffect(() => {
@@ -288,24 +319,20 @@ function ReceiptCaptureContent() {
     setValidationErrors([])
 
     try {
-      const {
-        data: { text },
-      } = await Tesseract.recognize(imageData.file, "eng", {
-        logger: (m) => {
-          if (m.status === "recognizing text") {
-            setOcrState((prev) => ({
-              ...prev,
-              progress: Math.round(m.progress * 100),
-            }))
-          }
-        },
-        tessedit_char_whitelist: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz .,+:-£₱",
-      })
+      // Use the enhanced OCR processing with pattern matching
+      const { text, extractedData: extracted, errors, matchedPattern, matchedAccount } = await processImageWithOCRAndPatterns(
+        imageData.file,
+        (progress) => {
+          setOcrState((prev) => ({
+            ...prev,
+            progress: Math.round(progress),
+          }))
+        }
+      )
 
       console.log("Raw OCR text:", text)
-
-      const extracted = extractDataFromText(text)
-      const errors = validateExtractedData(extracted)
+      console.log("Matched pattern:", matchedPattern?.pattern_name)
+      console.log("Matched account:", matchedAccount?.account_name)
 
       setOcrState({
         isProcessing: false,
@@ -338,8 +365,10 @@ function ReceiptCaptureContent() {
 
   const saveReceipt = async () => {
     if (validationErrors.length > 0) {
-      alert("Please fix validation errors before saving")
-      return
+      const shouldContinue = confirm(`Validation warnings found:\n${validationErrors.join('\n')}\n\nDo you want to save anyway?`)
+      if (!shouldContinue) {
+        return
+      }
     }
 
     if (!user?.id) {
@@ -739,7 +768,7 @@ function ReceiptCaptureContent() {
                       const value = e.target.value
                       setExtractedData((prev) => ({
                         ...prev,
-                        customerTip: value === "" ? null : Number.parseFloat(value),
+                        customerTip: value === "" ? undefined : Number.parseFloat(value),
                       }))
                     }}
                     className="h-12 bg-white/50 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20 rounded-xl shadow-sm"
