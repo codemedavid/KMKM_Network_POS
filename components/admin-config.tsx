@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import ModernNav from "./modern-nav"
 import ProtectedRoute from "./protected-route"
 import { useAuth } from "./auth-context-fixed"
+import { useToast } from "@/components/ui/use-toast"
 
 interface AdminConfig {
   targetGCashNumber: string
@@ -64,6 +65,7 @@ function AdminConfigContent() {
   const [testResults, setTestResults] = useState<any>(null)
 
   const { register } = useAuth() // Only need register here
+  const { toast } = useToast()
   const [agentName, setAgentName] = useState("")
   const [agentEmail, setAgentEmail] = useState("")
   const [agentPassword, setAgentPassword] = useState("")
@@ -121,7 +123,11 @@ function AdminConfigContent() {
 
   const saveConfig = () => {
     localStorage.setItem("gcash-pos-admin-config", JSON.stringify(config))
-    alert("Configuration saved successfully!")
+    toast({
+      variant: "success",
+      title: "Configuration Saved",
+      description: "Configuration saved successfully!",
+    })
   }
 
   const loadSampleData = () => {

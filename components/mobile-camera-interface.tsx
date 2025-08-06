@@ -9,6 +9,7 @@ import { useAuth } from "./auth-context-fixed"
 import ProtectedRoute from "./protected-route"
 import { useRouter } from "next/navigation"
 import ModernNav from "./modern-nav"
+import { useToast } from "@/components/ui/use-toast"
 // Import our shared processing functions
 import {
   processImageWithOCR,
@@ -78,6 +79,7 @@ const defaultAdminConfig: AdminConfig = {
 function MobileCameraContent() {
   const { user } = useAuth()
   const router = useRouter()
+  const { toast } = useToast()
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -294,7 +296,7 @@ function MobileCameraContent() {
     }
   }
 
-  const processWithAI = async () => {
+  const processWithAI = useCallback(async () => {
     if (!capturedImage || !user?.id) return
 
     setOcrState({
@@ -349,7 +351,7 @@ function MobileCameraContent() {
         error: error.message || "Failed to process image"
       })
     }
-  }
+  }, [capturedImage, user?.id, adminConfig.serviceCommissionRate, adminConfig.tipCommissionRate])
 
   const saveReceipt = async () => {
     if (!capturedImage || !user?.id || !ocrState.extractedData) return
@@ -392,7 +394,11 @@ function MobileCameraContent() {
         
         // Show success message with final commission
         const tipText = customerTip > 0 ? ` (Tip: ₱${customerTip.toFixed(2)})` : ''
-        alert(`Receipt saved!${tipText}\nFinal Commission: ₱${(finalExtractedData.agentCommission || 0).toFixed(2)}`)
+        toast({
+          variant: "success",
+          title: "Receipt Saved Successfully!",
+          description: `${tipText}\nFinal Commission: ₱${(finalExtractedData.agentCommission || 0).toFixed(2)}`,
+        })
         
         // Restart camera for next capture
         startCamera()
@@ -430,7 +436,7 @@ function MobileCameraContent() {
 
   return (
     <div className="min-h-screen bg-black relative overflow-hidden">
-      {/* Header */}
+      {/* Camera Header - Positioned at top */}
       <div className="absolute top-0 left-0 right-0 z-20 bg-gradient-to-b from-black/70 to-transparent p-3">
         <div className="flex items-center justify-between text-white">
           <h1 className="text-base font-semibold">GCash Scanner</h1>
@@ -448,7 +454,7 @@ function MobileCameraContent() {
       </div>
 
       {/* Camera View */}
-      <div className="relative w-full h-screen">
+      <div className="relative w-full h-screen pt-12 pb-20">
         {!capturedImage ? (
           <>
             {/* Live Camera Feed */}
@@ -502,7 +508,7 @@ function MobileCameraContent() {
 
         {/* Permission Error */}
         {cameraState.permissionError && (
-          <div className="absolute inset-0 bg-black flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black flex items-center justify-center p-4 pt-16 pb-20">
             <div className="bg-red-900/20 border border-red-600 rounded-lg p-6 max-w-md w-full text-center">
               <AlertTriangle className="h-12 w-12 text-red-400 mx-auto mb-4" />
               <h3 className="text-white text-lg font-semibold mb-2">Camera Not Available</h3>
@@ -549,7 +555,7 @@ function MobileCameraContent() {
 
         {/* OCR Processing Overlay */}
         {ocrState.isProcessing && (
-          <div className="absolute inset-0 bg-black/80 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/80 flex items-center justify-center pt-12 pb-20">
             <div className="text-white text-center">
               <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
               <p className="text-lg font-semibold">Processing with AI...</p>
@@ -566,11 +572,11 @@ function MobileCameraContent() {
 
         {/* OCR Success/Error Results */}
         {(ocrState.status === "completed" || ocrState.status === "error") && ocrState.extractedData && (
-          <div className="absolute inset-0 bg-black/80 flex items-center justify-center p-4">
-            <div className="bg-white rounded-lg p-6 max-w-sm w-full max-h-[80vh] overflow-y-auto">
-              <div className="text-center mb-4">
-                <CheckCircle className="h-8 w-8 text-green-500 mx-auto mb-2" />
-                <h3 className="text-lg font-semibold">Receipt Data Extracted</h3>
+          <div className="absolute inset-0 bg-black/80 flex items-center justify-center p-3 pt-16 pb-20">
+            <div className="bg-white rounded-lg p-4 max-w-sm w-full max-h-[65vh] overflow-y-auto">
+              <div className="text-center mb-3">
+                <CheckCircle className="h-6 w-6 text-green-500 mx-auto mb-1" />
+                <h3 className="text-base font-semibold">Data Extracted</h3>
               </div>
               
               {/* Extracted Data Summary */}
@@ -753,59 +759,55 @@ function MobileCameraContent() {
       </div>
 
       {/* Bottom Controls */}
-      <div className="absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black/90 to-transparent p-6">
+      <div className="absolute bottom-20 left-0 right-0 z-20 bg-gradient-to-t from-black/90 to-transparent p-4 pb-6">
         {!capturedImage ? (
           /* Camera Controls */
-          <div className="flex items-center justify-center space-x-8">
+          <div className="flex items-center justify-center space-x-6">
             {/* Attach Image Button */}
             <Button
               onClick={() => fileInputRef.current?.click()}
-              className="w-16 h-16 rounded-full bg-white/20 hover:bg-white/30 border-2 border-white/50"
+              className="w-14 h-14 rounded-full bg-white/20 hover:bg-white/30 border-2 border-white/50"
               disabled={!cameraState.hasPermission}
             >
-              <Upload className="h-6 w-6 text-white" />
+              <Upload className="h-5 w-5 text-white" />
             </Button>
 
             {/* Capture Button */}
             <Button
               onClick={capturePhoto}
-              className="w-20 h-20 rounded-full bg-white hover:bg-gray-100 border-4 border-white shadow-lg"
+              className="w-18 h-18 rounded-full bg-white hover:bg-gray-100 border-4 border-white shadow-lg"
               disabled={!cameraState.isActive}
             >
-              <Camera className="h-8 w-8 text-black" />
+              <Camera className="h-7 w-7 text-black" />
             </Button>
 
             {/* Gallery/Recent */}
-            <div className="w-16 h-16 rounded-lg bg-white/20 border-2 border-white/50 flex items-center justify-center">
-              <div className="w-8 h-8 bg-white/40 rounded"></div>
+            <div className="w-14 h-14 rounded-lg bg-white/20 border-2 border-white/50 flex items-center justify-center">
+              <div className="w-6 h-6 bg-white/40 rounded"></div>
             </div>
           </div>
         ) : (
           /* Image Action Controls */
-          <div className="space-y-4">
-            <div className="flex gap-3">
+          <div className="space-y-3">
+            <div className="flex gap-2">
               <Button
                 onClick={processWithAI}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3"
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 text-sm"
                 disabled={ocrState.isProcessing}
               >
-                <Zap className="h-5 w-5 mr-2" />
-                Extract with AI
+                <Zap className="h-4 w-4 mr-1" />
+                Extract
               </Button>
               
               <Button
                 onClick={openManualEntry}
                 variant="outline"
-                className="flex-1 bg-white/10 border-white/30 text-white py-3 hover:bg-white/20"
+                className="flex-1 bg-white/10 border-white/30 text-white py-2.5 text-sm hover:bg-white/20"
               >
-                <Edit3 className="h-5 w-5 mr-2" />
-                Manual Entry
+                <Edit3 className="h-4 w-4 mr-1" />
+                Manual
               </Button>
             </div>
-            
-            <p className="text-white/70 text-sm text-center">
-              Use AI extraction for automatic data capture or manual entry for custom input
-            </p>
           </div>
         )}
       </div>
@@ -822,6 +824,11 @@ function MobileCameraContent() {
 
       {/* Hidden canvas for image capture */}
       <canvas ref={canvasRef} className="hidden" />
+      
+      {/* Bottom Navigation - Fixed at bottom */}
+      <div className="fixed bottom-0 left-0 right-0 z-30">
+        <ModernNav />
+      </div>
     </div>
   )
 }

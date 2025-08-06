@@ -21,7 +21,6 @@ const navItems: NavItem[] = [
   { icon: BarChart3, label: "Analytics", href: "/analytics" },
   { icon: CreditCard, label: "Accounts", href: "/accounts", adminOnly: true },
   { icon: Settings, label: "Admin", href: "/admin", adminOnly: true },
-  { icon: User, label: "Profile", href: "/profile" },
 ]
 
 export default function ModernNav() {
@@ -54,8 +53,8 @@ export default function ModernNav() {
                 <Scan className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">GCash POS</h1>
-                <p className="text-sm text-gray-500">Receipt Scanner</p>
+                <h1 className="text-xl font-bold text-gray-900">KMKM Network</h1>
+                <p className="text-sm text-gray-500">Receipt Scanner and POS </p>
               </div>
             </div>
 

@@ -26,9 +26,9 @@ export default function CameraDiagnostic() {
       // Check permissions if available
       if (typeof navigator !== 'undefined' && navigator.permissions) {
         navigator.permissions.query({ name: 'camera' as any }).then((result) => {
-          setDiagnostics(prev => ({ ...prev, permissions: result.state }))
+          setDiagnostics((prev: Record<string, any>) => ({ ...prev, permissions: result.state }))
         }).catch(() => {
-          setDiagnostics(prev => ({ ...prev, permissions: 'unavailable' }))
+          setDiagnostics((prev: Record<string, any>) => ({ ...prev, permissions: 'unavailable' }))
         })
       }
 

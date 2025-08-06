@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useRef, useEffect } from "react" // Import useEffect
+import { useState, useRef, useEffect, useCallback } from "react" // Import useEffect
 import { Upload, Camera, Scan, Loader2, CheckCircle, X, FileImage, Zap, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -23,6 +23,7 @@ import { supabase } from "@/lib/supabase" // Add this import
 import { v4 as uuidv4 } from "uuid" // Import uuid for unique file names
 import { getPaymentAccounts } from "@/actions/accounts"
 import { processImageWithOCRAndPatterns } from "@/lib/receipt-processing"
+import { useToast } from "@/components/ui/use-toast"
 
 // Data structures
 interface ReceiptData {
@@ -103,12 +104,13 @@ function ReceiptCaptureContent() {
   const [agentCommission, setAgentCommission] = useState<number>(0)
 
   const { user } = useAuth() // Get current user from AuthContext
+  const { toast } = useToast()
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
 
-  // Load accounts and update config
-  const loadAccounts = async () => {
+  // Load accounts and update config - with caching
+  const loadAccounts = useCallback(async () => {
     try {
       const { accounts } = await getPaymentAccounts()
       const activeAccounts = accounts?.filter((a: any) => a.is_active) || []
@@ -129,12 +131,12 @@ function ReceiptCaptureContent() {
     } catch (error) {
       console.error("Failed to load accounts:", error)
     }
-  }
+  }, [])
 
   // Load accounts on component mount
   useEffect(() => {
     loadAccounts()
-  }, [])
+  }, [loadAccounts])
 
   // Effect to recalculate agent commission when amount or tip changes
   useEffect(() => {
@@ -372,7 +374,11 @@ function ReceiptCaptureContent() {
     }
 
     if (!user?.id) {
-      alert("User not logged in. Cannot save receipt.")
+      toast({
+        variant: "destructive",
+        title: "Authentication Error",
+        description: "User not logged in. Cannot save receipt.",
+      })
       return
     }
 
@@ -393,7 +399,11 @@ function ReceiptCaptureContent() {
 
         if (error) {
           console.error("Error uploading image:", error)
-          alert("Failed to upload image: " + error.message)
+          toast({
+            variant: "destructive",
+            title: "Upload Failed",
+            description: "Failed to upload image: " + error.message,
+          })
           return // Stop saving receipt if image upload fails
         }
 
@@ -405,7 +415,11 @@ function ReceiptCaptureContent() {
         }
       } catch (err) {
         console.error("Unexpected error during image upload:", err)
-        alert("An unexpected error occurred while uploading the image.")
+        toast({
+          variant: "destructive",
+          title: "Upload Error",
+          description: "An unexpected error occurred while uploading the image.",
+        })
         return
       }
     }
@@ -432,15 +446,27 @@ function ReceiptCaptureContent() {
 
       if (error) {
         console.error("Error saving receipt:", error)
-        alert("Failed to save receipt: " + error.message)
+        toast({
+          variant: "destructive",
+          title: "Save Failed",
+          description: "Failed to save receipt: " + error.message,
+        })
       } else {
         console.log("Receipt saved successfully:", data)
-        alert(`Receipt saved successfully! Agent Commission: ₱${agentCommission.toFixed(2)}`)
+        toast({
+          variant: "success",
+          title: "Receipt Saved Successfully!",
+          description: `Agent Commission: ₱${agentCommission.toFixed(2)}`,
+        })
         clearImage()
       }
     } catch (err) {
       console.error("Unexpected error during save:", err)
-      alert("An unexpected error occurred while saving the receipt.")
+      toast({
+        variant: "destructive",
+        title: "Save Error",
+        description: "An unexpected error occurred while saving the receipt.",
+      })
     }
   }
 
