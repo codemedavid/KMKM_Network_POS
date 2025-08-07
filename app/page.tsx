@@ -19,7 +19,8 @@ export default function Page() {
     <>
       {/* Mobile Camera Interface - shown on mobile devices */}
       <div className="block md:hidden">
-        <MobileCameraInterface />
+        {/* <MobileCameraInterface /> */}
+        <ReceiptCapture />
       </div>
 
       {/* Desktop Receipt Capture - shown on desktop */}

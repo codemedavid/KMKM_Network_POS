@@ -115,22 +115,34 @@ export default function AgentPayouts() {
     setError(null)
 
     try {
+      console.log("Fetching payouts for agent:", user.id)
+      console.log("User role:", user.role)
+      
       // Fetch agent's payout history
       const { data: payoutsData, error: payoutsError } = await supabase
         .from("payouts")
-        .select(`
-          *,
-          profiles:agent_id(full_name)
-        `)
+        .select("*")
         .eq("agent_id", user.id)
         .order("payout_date", { ascending: false })
 
+      console.log("Payouts query result:", { payoutsData, payoutsError })
+
       if (payoutsError) {
         console.error("Error fetching payouts:", payoutsError)
-        setError("Failed to load payout history.")
+        // Check if it's a table not found error
+        if (payoutsError.message.includes("Could not find a relationship") || 
+            payoutsError.message.includes("relation") || 
+            payoutsError.message.includes("does not exist")) {
+          setError("Payouts table not set up yet. Please contact admin to run the database migration.")
+        } else if (payoutsError.message.includes("permission denied")) {
+          setError("Payouts feature is being set up. You'll be able to view your payouts once the setup is complete.")
+        } else {
+          setError(`Failed to load payout history: ${payoutsError.message}`)
+        }
         setPayoutHistory([])
       } else {
         setPayoutHistory(payoutsData || [])
+        console.log("Set payout history:", payoutsData?.length || 0, "items")
       }
 
       // Fetch agent's receipts
@@ -342,6 +354,7 @@ export default function AgentPayouts() {
               <div className="text-center py-8 text-gray-500">
                 <p>No payouts found matching your filters.</p>
                 <p>Your payouts will appear here once processed by admin.</p>
+                <p className="text-sm mt-2">If you're expecting payouts, please contact your administrator.</p>
               </div>
             ) : (
               <div className="overflow-x-auto">

@@ -10,7 +10,24 @@ import { supabase } from "@/lib/supabase" // Client-side Supabase client
 import { getAdminDashboardData, markAgentCommissionPaid, getAgentPayoutHistory, type PayoutDetails } from "@/actions/admin" // Import server actions
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import PayoutConfirmationDialog from "./payout-confirmation-dialog"     
+import PayoutConfirmationDialog from "./payout-confirmation-dialog"
+import { 
+  LineChart, 
+  Line, 
+  AreaChart, 
+  Area, 
+  BarChart, 
+  Bar, 
+  PieChart, 
+  Pie, 
+  Cell, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  Legend, 
+  ResponsiveContainer 
+} from "recharts"     
 // Data structures for receipts (must match what's saved in Supabase)
 interface ReceiptData {
   id: string
@@ -294,6 +311,90 @@ export default function AnalyticsDashboard() {
   const totalTransactions = filteredReceipts.length
   const averageTransaction = totalTransactions > 0 ? totalSales / totalTransactions : 0
 
+  // Chart data processing functions
+  const processSalesTrendData = () => {
+    const now = new Date()
+    const days = []
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(now)
+      date.setDate(date.getDate() - i)
+      const dayName = date.toLocaleDateString('en-US', { weekday: 'short' })
+      const dayReceipts = filteredReceipts.filter(receipt => {
+        const receiptDate = new Date(receipt.date_time)
+        return receiptDate.toDateString() === date.toDateString()
+      })
+      const daySales = dayReceipts.reduce((sum, r) => sum + (r.amount || 0), 0)
+      const dayCommission = dayReceipts.reduce((sum, r) => sum + (r.agent_commission || 0), 0)
+      days.push({
+        name: dayName,
+        sales: daySales,
+        commission: dayCommission,
+        transactions: dayReceipts.length
+      })
+    }
+    return days
+  }
+
+  const processAgentPerformanceData = () => {
+    if (user?.role !== "admin") return []
+    
+    const agentMap = new Map<string, { name: string; sales: number; commission: number; transactions: number }>()
+    
+    filteredReceipts.forEach(receipt => {
+      if (receipt.agent_id) {
+        const agentName = allProfiles.find(p => p.id === receipt.agent_id)?.full_name || 
+                         `Agent ${receipt.agent_id.substring(0, 4)}`
+        
+        const existing = agentMap.get(receipt.agent_id) || {
+          name: agentName,
+          sales: 0,
+          commission: 0,
+          transactions: 0
+        }
+        
+        existing.sales += receipt.amount || 0
+        existing.commission += receipt.agent_commission || 0
+        existing.transactions += 1
+        
+        agentMap.set(receipt.agent_id, existing)
+      }
+    })
+    
+    return Array.from(agentMap.values()).sort((a, b) => b.sales - a.sales)
+  }
+
+  const processCommissionBreakdownData = () => {
+    const serviceCommission = filteredReceipts.reduce((sum, r) => {
+      const serviceAmount = (r.amount || 0) - (r.customer_tip || 0)
+      return sum + (serviceAmount * 0.2) // Assuming 20% service commission
+    }, 0)
+    
+    const tipCommission = filteredReceipts.reduce((sum, r) => {
+      return sum + ((r.customer_tip || 0) * 0.5) // Assuming 50% tip commission
+    }, 0)
+    
+    return [
+      { name: 'Service Commission', value: serviceCommission, color: '#3B82F6' },
+      { name: 'Tip Commission', value: tipCommission, color: '#10B981' }
+    ]
+  }
+
+  const processTransactionTypeData = () => {
+    const receiveCount = filteredReceipts.filter(r => r.transaction_type === 'receive').length
+    const sendCount = filteredReceipts.filter(r => r.transaction_type === 'send').length
+    
+    return [
+      { name: 'Received', value: receiveCount, color: '#10B981' },
+      { name: 'Sent', value: sendCount, color: '#EF4444' }
+    ]
+  }
+
+  // Generate chart data
+  const salesTrendData = processSalesTrendData()
+  const agentPerformanceData = processAgentPerformanceData()
+  const commissionBreakdownData = processCommissionBreakdownData()
+  const transactionTypeData = processTransactionTypeData()
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100">
       <ModernNav />
@@ -435,6 +536,136 @@ export default function AnalyticsDashboard() {
                   <CardContent>
                     <div className="text-2xl font-bold text-gray-900">₱{totalTips.toLocaleString()}</div>
                     <p className="text-xs text-gray-500">All-time tips</p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* Charts Section */}
+            <div className="grid gap-6 md:grid-cols-2 mb-8">
+              {/* Sales Trend Chart */}
+              <Card className="bg-white/70 backdrop-blur-sm border border-gray-200/50 shadow-xl shadow-gray-200/20">
+                <CardHeader>
+                  <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5" />
+                    Sales Trend (Last 7 Days)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={salesTrendData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" />
+                      <YAxis />
+                      <Tooltip 
+                        formatter={(value: any) => [`₱${value.toLocaleString()}`, '']}
+                        labelStyle={{ color: '#374151' }}
+                      />
+                      <Legend />
+                      <Line 
+                        type="monotone" 
+                        dataKey="sales" 
+                        stroke="#3B82F6" 
+                        strokeWidth={2}
+                        name="Sales"
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="commission" 
+                        stroke="#10B981" 
+                        strokeWidth={2}
+                        name="Commission"
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              {/* Commission Breakdown Chart */}
+              <Card className="bg-white/70 backdrop-blur-sm border border-gray-200/50 shadow-xl shadow-gray-200/20">
+                <CardHeader>
+                  <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <Percent className="w-5 h-5" />
+                    Commission Breakdown
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie
+                        data={commissionBreakdownData}
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={80}
+                        dataKey="value"
+                        label={({ name, value }) => `${name}: ₱${value.toLocaleString()}`}
+                      >
+                        {commissionBreakdownData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value: any) => [`₱${value.toLocaleString()}`, '']} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Additional Charts for Admin */}
+            {user?.role === "admin" && (
+              <div className="grid gap-6 md:grid-cols-2 mb-8">
+                {/* Agent Performance Chart */}
+                <Card className="bg-white/70 backdrop-blur-sm border border-gray-200/50 shadow-xl shadow-gray-200/20">
+                  <CardHeader>
+                    <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                      <Users className="w-5 h-5" />
+                      Agent Performance
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart data={agentPerformanceData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" />
+                        <YAxis />
+                        <Tooltip 
+                          formatter={(value: any) => [`₱${value.toLocaleString()}`, '']}
+                          labelStyle={{ color: '#374151' }}
+                        />
+                        <Legend />
+                        <Bar dataKey="sales" fill="#3B82F6" name="Sales" />
+                        <Bar dataKey="commission" fill="#10B981" name="Commission" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+
+                {/* Transaction Types Chart */}
+                <Card className="bg-white/70 backdrop-blur-sm border border-gray-200/50 shadow-xl shadow-gray-200/20">
+                  <CardHeader>
+                    <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                      <DollarSign className="w-5 h-5" />
+                      Transaction Types
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <PieChart>
+                        <Pie
+                          data={transactionTypeData}
+                          cx="50%"
+                          cy="50%"
+                          outerRadius={80}
+                          dataKey="value"
+                          label={({ name, value }) => `${name}: ${value}`}
+                        >
+                          {transactionTypeData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
                   </CardContent>
                 </Card>
               </div>
