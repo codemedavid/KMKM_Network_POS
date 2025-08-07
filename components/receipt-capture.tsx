@@ -102,6 +102,11 @@ function ReceiptCaptureContent() {
   const [adminConfig, setAdminConfig] = useState<AdminConfig>(defaultAdminConfig)
   const [validationErrors, setValidationErrors] = useState<string[]>([])
   const [agentCommission, setAgentCommission] = useState<number>(0)
+  const [referenceNumberStatus, setReferenceNumberStatus] = useState<{
+    checking: boolean
+    isDuplicate: boolean
+    message: string
+  }>({ checking: false, isDuplicate: false, message: "" })
 
   const { user } = useAuth() // Get current user from AuthContext
   const { toast } = useToast()
@@ -363,7 +368,108 @@ function ReceiptCaptureContent() {
     setOcrState({ isProcessing: false, progress: 0, status: "idle" })
     setValidationErrors([])
     setAgentCommission(0)
+    setReferenceNumberStatus({ checking: false, isDuplicate: false, message: "" })
   }
+
+  const checkForDuplicateReference = async (referenceNumber: string): Promise<boolean> => {
+    try {
+      const { data, error } = await supabase
+        .from("receipts")
+        .select("id, reference_number, saved_at, agent_id")
+        .eq("reference_number", referenceNumber)
+        .single()
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 is "not found" error
+        console.error("Error checking for duplicate:", error)
+        return false // Assume no duplicate if there's an error
+      }
+
+      if (data) {
+        // Found a receipt with this reference number
+        const existingReceipt = data
+        const isOwnReceipt = existingReceipt.agent_id === user?.id
+        
+        if (isOwnReceipt) {
+          toast({
+            variant: "destructive",
+            title: "Duplicate Receipt",
+            description: `You have already uploaded a receipt with reference number ${referenceNumber}.`,
+          })
+        } else {
+          toast({
+            variant: "destructive",
+            title: "Duplicate Reference Number",
+            description: `A receipt with reference number ${referenceNumber} has already been uploaded by another agent.`,
+          })
+        }
+        return true
+      }
+
+      return false // No duplicate found
+    } catch (error) {
+      console.error("Error checking for duplicate reference:", error)
+      return false
+    }
+  }
+
+  // Real-time reference number validation
+  const checkReferenceNumberInRealTime = async (referenceNumber: string) => {
+    if (!referenceNumber || referenceNumber.length < 3) {
+      setReferenceNumberStatus({ checking: false, isDuplicate: false, message: "" })
+      return
+    }
+
+    setReferenceNumberStatus({ checking: true, isDuplicate: false, message: "Checking..." })
+
+    try {
+      const { data, error } = await supabase
+        .from("receipts")
+        .select("id, reference_number, saved_at, agent_id")
+        .eq("reference_number", referenceNumber)
+        .single()
+
+      if (error && error.code !== 'PGRST116') {
+        setReferenceNumberStatus({ checking: false, isDuplicate: false, message: "" })
+        return
+      }
+
+      if (data) {
+        const existingReceipt = data
+        const isOwnReceipt = existingReceipt.agent_id === user?.id
+        
+        if (isOwnReceipt) {
+          setReferenceNumberStatus({
+            checking: false,
+            isDuplicate: true,
+            message: "You have already uploaded this receipt"
+          })
+        } else {
+          setReferenceNumberStatus({
+            checking: false,
+            isDuplicate: true,
+            message: "This reference number has already been used by another agent"
+          })
+        }
+      } else {
+        setReferenceNumberStatus({ checking: false, isDuplicate: false, message: "Reference number is available" })
+      }
+    } catch (error) {
+      setReferenceNumberStatus({ checking: false, isDuplicate: false, message: "" })
+    }
+  }
+
+  // Debounced reference number check
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (extractedData.referenceNumber) {
+        checkReferenceNumberInRealTime(extractedData.referenceNumber)
+      } else {
+        setReferenceNumberStatus({ checking: false, isDuplicate: false, message: "" })
+      }
+    }, 500) // Wait 500ms after user stops typing
+
+    return () => clearTimeout(timeoutId)
+  }, [extractedData.referenceNumber])
 
   const saveReceipt = async () => {
     if (validationErrors.length > 0) {
@@ -380,6 +486,14 @@ function ReceiptCaptureContent() {
         description: "User not logged in. Cannot save receipt.",
       })
       return
+    }
+
+    // Check for duplicate reference number before saving
+    if (extractedData.referenceNumber) {
+      const isDuplicate = await checkForDuplicateReference(extractedData.referenceNumber)
+      if (isDuplicate) {
+        return // Stop saving if duplicate found
+      }
     }
 
     let imageUrl: string | null = null
@@ -446,11 +560,21 @@ function ReceiptCaptureContent() {
 
       if (error) {
         console.error("Error saving receipt:", error)
-        toast({
-          variant: "destructive",
-          title: "Save Failed",
-          description: "Failed to save receipt: " + error.message,
-        })
+        
+        // Check if it's a duplicate reference number error
+        if (error.code === '23505' && error.message.includes('reference_number')) {
+          toast({
+            variant: "destructive",
+            title: "Duplicate Receipt",
+            description: `A receipt with reference number ${extractedData.referenceNumber} has already been uploaded.`,
+          })
+        } else {
+          toast({
+            variant: "destructive",
+            title: "Save Failed",
+            description: "Failed to save receipt: " + error.message,
+          })
+        }
       } else {
         console.log("Receipt saved successfully:", data)
         toast({
@@ -746,13 +870,39 @@ function ReceiptCaptureContent() {
                   <Label htmlFor="reference" className="text-sm font-medium text-gray-700">
                     Reference Number *
                   </Label>
-                  <Input
-                    id="reference"
-                    value={extractedData.referenceNumber || ""}
-                    onChange={(e) => setExtractedData((prev) => ({ ...prev, referenceNumber: e.target.value }))}
-                    className="h-12 bg-white/50 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20 rounded-xl shadow-sm"
-                    placeholder="8031350663152"
-                  />
+                  <div className="relative">
+                    <Input
+                      id="reference"
+                      value={extractedData.referenceNumber || ""}
+                      onChange={(e) => setExtractedData((prev) => ({ ...prev, referenceNumber: e.target.value }))}
+                      className={`h-12 bg-white/50 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20 rounded-xl shadow-sm pr-12 ${
+                        referenceNumberStatus.isDuplicate ? 'border-red-300 focus:border-red-500 focus:ring-red-500/20' :
+                        referenceNumberStatus.message === "Reference number is available" ? 'border-green-300 focus:border-green-500 focus:ring-green-500/20' : ''
+                      }`}
+                      placeholder="8031350663152"
+                    />
+                    {referenceNumberStatus.checking && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+                      </div>
+                    )}
+                    {!referenceNumberStatus.checking && referenceNumberStatus.message && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        {referenceNumberStatus.isDuplicate ? (
+                          <AlertTriangle className="w-4 h-4 text-red-500" />
+                        ) : referenceNumberStatus.message === "Reference number is available" ? (
+                          <CheckCircle className="w-4 h-4 text-green-500" />
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                  {referenceNumberStatus.message && !referenceNumberStatus.checking && (
+                    <div className={`text-xs mt-1 ${
+                      referenceNumberStatus.isDuplicate ? 'text-red-600' : 'text-green-600'
+                    }`}>
+                      {referenceNumberStatus.message}
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -846,7 +996,7 @@ function ReceiptCaptureContent() {
                   <Button
                     size="lg"
                     onClick={saveReceipt}
-                    disabled={!extractedData.amount || !extractedData.referenceNumber}
+                      disabled={!extractedData.amount || !extractedData.referenceNumber || referenceNumberStatus.isDuplicate}
                     className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex-1"
                   >
                     <CheckCircle className="w-4 h-4 mr-2" />
