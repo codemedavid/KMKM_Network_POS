@@ -1,0 +1,52 @@
+#!/bin/bash
+
+echo "=== DUPLICATE RECEIPT CLEANUP SCRIPT ==="
+echo ""
+echo "This script will help you remove duplicate receipts from your database."
+echo "IMPORTANT: Always backup your data before running cleanup scripts!"
+echo ""
+
+echo "Step 1: Check for duplicates"
+echo "Run this SQL in your Supabase SQL Editor to see what duplicates exist:"
+echo ""
+echo "--- START SQL ---"
+cat scripts/015_safe_duplicate_removal.sql | sed -n '/-- STEP 1:/,/-- STEP 2:/p' | grep -v "^--"
+echo "--- END SQL ---"
+echo ""
+
+echo "Step 2: Review the results above"
+echo "If you see duplicates, you can proceed with the cleanup."
+echo ""
+
+echo "Step 3: Create backup (recommended)"
+echo "Uncomment this line in scripts/015_safe_duplicate_removal.sql:"
+echo "CREATE TABLE receipts_backup AS SELECT * FROM receipts;"
+echo ""
+
+echo "Step 4: Remove duplicates"
+echo "Run this SQL in your Supabase SQL Editor:"
+echo ""
+echo "--- START SQL ---"
+cat scripts/015_safe_duplicate_removal.sql | sed -n '/-- STEP 3:/,/-- STEP 4:/p' | grep -v "^--"
+echo "--- END SQL ---"
+echo ""
+
+echo "Step 5: Verify cleanup"
+echo "Run this SQL to verify no duplicates remain:"
+echo ""
+echo "--- START SQL ---"
+cat scripts/015_safe_duplicate_removal.sql | sed -n '/-- STEP 4:/,/-- STEP 5:/p' | grep -v "^--"
+echo "--- END SQL ---"
+echo ""
+
+echo "Step 6: Final summary"
+echo "Run this SQL to see the final summary:"
+echo ""
+echo "--- START SQL ---"
+cat scripts/015_safe_duplicate_removal.sql | sed -n '/-- STEP 5:/,$p' | grep -v "^--"
+echo "--- END SQL ---"
+echo ""
+
+echo "=== COMPLETED ==="
+echo "After running these steps, you can apply the unique constraint:"
+echo "Run the contents of scripts/013_add_unique_constraint_to_reference_number.sql"

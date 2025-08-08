@@ -33,7 +33,7 @@ interface ReceiptData {
   id: string
   amount: number
   reference_number: string // Changed from referenceNumber
-  date_time: string // Changed from dateTime
+  date_time: string // Original receipt date from GCash transaction
   sender_name?: string // Changed from senderName
   customer_tip?: number // Changed from customerTip
   receiver_name?: string // Changed from receiverName
@@ -42,7 +42,7 @@ interface ReceiptData {
   status: "pending" | "completed" | "failed"
   is_valid_account: boolean // Changed from isValidAccount
   agent_commission?: number // Changed from agentCommission
-  saved_at: string // Changed from savedAt
+  saved_at: string // System timestamp when receipt was added
   agent_id?: string // Changed from agentId
   notes?: string // Added notes
   commission_paid?: boolean
@@ -95,7 +95,7 @@ export default function AnalyticsDashboard() {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
 
     return receipts.filter(receipt => {
-      const receiptDate = new Date(receipt.date_time)
+      const receiptDate = new Date(receipt.saved_at) // Use saved_at (system timestamp) instead of date_time
       
       switch (filter) {
         case "daily":
@@ -121,7 +121,7 @@ export default function AnalyticsDashboard() {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
 
     return payouts.filter(payout => {
-      const payoutDate = new Date(payout.created_at)
+      const payoutDate = new Date(payout.created_at) // This is already correct for payouts
       
       switch (filter) {
         case "daily":
@@ -320,7 +320,7 @@ export default function AnalyticsDashboard() {
       date.setDate(date.getDate() - i)
       const dayName = date.toLocaleDateString('en-US', { weekday: 'short' })
       const dayReceipts = filteredReceipts.filter(receipt => {
-        const receiptDate = new Date(receipt.date_time)
+        const receiptDate = new Date(receipt.saved_at) // Use saved_at (system timestamp) instead of date_time
         return receiptDate.toDateString() === date.toDateString()
       })
       const daySales = dayReceipts.reduce((sum, r) => sum + (r.amount || 0), 0)

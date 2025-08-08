@@ -150,7 +150,7 @@ export default function TransactionHistory() {
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
       filtered = filtered.filter(tx => {
-        const txDate = new Date(tx.date_time);
+        const txDate = new Date(tx.saved_at); // Use saved_at (system timestamp) instead of date_time
         switch (filters.dateRange) {
           case "today":
             return txDate >= startOfDay;
@@ -220,9 +220,10 @@ export default function TransactionHistory() {
 
   const exportData = () => {
     const csvContent = [
-      ["Date", "Reference", "Amount", "Tip", "Commission", "Customer", "Type", "Status"],
+      ["Date Added", "Receipt Date", "Reference", "Amount", "Tip", "Commission", "Customer", "Type", "Status"],
       ...filteredTransactions.map(tx => [
-        format(new Date(tx.date_time), "MMM dd, yyyy hh:mm a"),
+        format(new Date(tx.saved_at), "MMM dd, yyyy hh:mm a"), // System timestamp
+        format(new Date(tx.date_time), "MMM dd, yyyy hh:mm a"), // Receipt date
         tx.reference_number,
         tx.amount?.toString() || "0",
         tx.customer_tip?.toString() || "0",
@@ -448,7 +449,7 @@ export default function TransactionHistory() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Date & Time</TableHead>
+                        <TableHead>Date Added</TableHead>
                         <TableHead>Ref No.</TableHead>
                         <TableHead>Amount</TableHead>
                         <TableHead>Tip</TableHead>
@@ -462,7 +463,7 @@ export default function TransactionHistory() {
                       {filteredTransactions.map((tx) => (
                         <TableRow key={tx.id}>
                           <TableCell className="whitespace-nowrap">
-                            {tx.date_time ? format(new Date(tx.date_time), "MMM dd, yyyy hh:mm a") : "N/A"}
+                            {tx.saved_at ? format(new Date(tx.saved_at), "MMM dd, yyyy hh:mm a") : "N/A"}
                           </TableCell>
                           <TableCell className="font-medium">{tx.reference_number}</TableCell>
                           <TableCell>

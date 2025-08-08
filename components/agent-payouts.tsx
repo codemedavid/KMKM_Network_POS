@@ -93,7 +93,7 @@ export default function AgentPayouts() {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
 
     return receipts.filter(receipt => {
-      const receiptDate = new Date(receipt.date_time)
+      const receiptDate = new Date(receipt.saved_at) // Use saved_at (system timestamp) instead of date_time
       
       switch (filter) {
         case "today":
@@ -413,7 +413,7 @@ export default function AgentPayouts() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Date</TableHead>
+                      <TableHead>Date Added</TableHead>
                       <TableHead>Amount</TableHead>
                       <TableHead>Commission</TableHead>
                       <TableHead>Status</TableHead>
@@ -424,7 +424,7 @@ export default function AgentPayouts() {
                     {filteredReceipts.slice(0, 10).map((receipt) => (
                       <TableRow key={receipt.id}>
                         <TableCell className="whitespace-nowrap">
-                          {format(new Date(receipt.date_time), "MMM dd, yyyy")}
+                          {format(new Date(receipt.saved_at), "MMM dd, yyyy")}
                         </TableCell>
                         <TableCell>
                           ₱{receipt.amount?.toLocaleString()}
